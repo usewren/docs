@@ -1,0 +1,576 @@
+openapi: 3.1.0
+info:
+  title: Wren
+  version: 0.1.0
+  description: |
+    Wren is a self-hosted versioned JSON storage service.
+    Every mutation creates a version. Versions can be labeled (e.g. `published`, `draft`).
+    All responses are streamed. Security and multi-tenancy are built in.
+
+servers:
+  - url: http://localhost:4000
+    description: Local sandbox
+
+tags:
+  - name: auth
+    description: Authentication — email/password and OAuth providers (handled by Better Auth)
+  - name: documents
+    description: Create, read, update and delete JSON documents
+  - name: versions
+    description: Version history, rollback and time-travel
+  - name: labels
+    description: Named pointers into version history
+  - name: diff
+    description: Compare versions
+  - name: system
+    description: Health and metadata
+
+paths:
+  /api/auth/sign-up/email:
+    post:
+      summary: Register with email and password
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                name:
+                  type: string
+      responses:
+        "200":
+          description: User created and session started
+        "422":
+          description: Validation error or email already in use
+
+  /api/auth/sign-in/email:
+    post:
+      summary: Sign in with email and password
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+      responses:
+        "200":
+          description: Session created
+        "401":
+          description: Invalid credentials
+
+  /api/auth/sign-out:
+    post:
+      summary: Sign out and invalidate session
+      tags: [auth]
+      responses:
+        "200":
+          description: Session invalidated
+
+  /api/auth/get-session:
+    get:
+      summary: Get current session and user info
+      tags: [auth]
+      responses:
+        "200":
+          description: Current session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      role:
+                        type: string
+                      orgId:
+                        type: string
+                  session:
+                    type: object
+        "401":
+          description: Not authenticated
+
+  /api/auth/sign-in/social:
+    post:
+      summary: Initiate OAuth sign-in (Google, Apple, GitHub)
+      tags: [auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, callbackURL]
+              properties:
+                provider:
+                  type: string
+                  enum: [google, apple, github]
+                callbackURL:
+                  type: string
+      responses:
+        "200":
+          description: Redirect URL for OAuth flow
+
+  /login:
+    get:
+      summary: Login and registration UI
+      tags: [auth]
+      responses:
+        "200":
+          description: HTML login/register page
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /profile:
+    get:
+      summary: Get current user's profile
+      tags: [auth]
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Authenticated user profile
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      role:
+                        type: string
+                      orgId:
+                        type: string
+                        nullable: true
+                      emailVerified:
+                        type: boolean
+        "302":
+          description: "Redirect to /login?redirect=/profile (browser requests only)"
+        "401":
+          description: "Not authenticated (API requests with Accept: application/json)"
+
+  /health:
+    get:
+      summary: Health check
+      tags: [system]
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+
+  /{collection}:
+    get:
+      summary: List documents
+      tags: [documents]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: filter
+          in: query
+          description: JSON path-based filter expression
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: cursor
+          in: query
+          description: Pagination cursor from previous response
+          schema:
+            type: string
+        - name: facets
+          in: query
+          description: Comma-separated list of fields to facet on
+          schema:
+            type: string
+        - name: label
+          in: query
+          description: Return documents at the state of this label
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Paginated list of documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentList"
+
+    post:
+      summary: Create a document
+      tags: [documents]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "201":
+          description: Document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+
+  /{collection}/{id}:
+    get:
+      summary: Get current state of a document
+      tags: [documents]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - name: label
+          in: query
+          description: Return state at this label instead of latest
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Update a document (creates a new version)
+      tags: [documents]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        "200":
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    delete:
+      summary: Soft delete a document (creates a tombstone version)
+      tags: [documents]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /{collection}/{id}/versions:
+    get:
+      summary: List version history of a document
+      tags: [versions]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Version history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  id:
+                    type: string
+                  versions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/VersionMeta"
+
+  /{collection}/{id}/versions/{version}:
+    get:
+      summary: Get document state at a specific version
+      tags: [versions]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/version"
+      responses:
+        "200":
+          description: Document at specified version
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /{collection}/{id}/rollback/{version}:
+    post:
+      summary: Rollback document to a previous version (creates a new version)
+      tags: [versions]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - $ref: "#/components/parameters/version"
+      responses:
+        "200":
+          description: Rollback successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  id:
+                    type: string
+                  rolledBackTo:
+                    type: integer
+
+  /{collection}/{id}/labels:
+    post:
+      summary: Set a label on the current version
+      tags: [labels]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [label]
+              properties:
+                label:
+                  type: string
+                  example: published
+      responses:
+        "200":
+          description: Label set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  id:
+                    type: string
+                  label:
+                    type: string
+
+  /{collection}/{id}/diff:
+    get:
+      summary: Diff between two versions or labels
+      tags: [diff]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - name: v1
+          in: query
+          required: true
+          description: Version number or label name
+          schema:
+            type: string
+        - name: v2
+          in: query
+          required: true
+          description: Version number or label name
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Diff result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  id:
+                    type: string
+                  v1:
+                    type: string
+                  v2:
+                    type: string
+                  diff:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DiffEntry"
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: better-auth.session_token
+
+  parameters:
+    collection:
+      name: collection
+      in: path
+      required: true
+      schema:
+        type: string
+      example: pages
+
+    id:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+    version:
+      name: version
+      in: path
+      required: true
+      schema:
+        type: integer
+
+  schemas:
+    DocumentResponse:
+      type: object
+      properties:
+        collection:
+          type: string
+        id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        data:
+          type: object
+
+    DocumentList:
+      type: object
+      properties:
+        collection:
+          type: string
+        total:
+          type: integer
+        cursor:
+          type: string
+          nullable: true
+        facets:
+          type: object
+          additionalProperties:
+            type: array
+            items:
+              type: object
+              properties:
+                value:
+                  type: string
+                count:
+                  type: integer
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/DocumentResponse"
+
+    VersionMeta:
+      type: object
+      properties:
+        version:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        labels:
+          type: array
+          items:
+            type: string
+
+    DiffEntry:
+      type: object
+      properties:
+        op:
+          type: string
+          enum: [add, remove, replace]
+        path:
+          type: string
+          description: JSON pointer to changed field
+        value:
+          description: New value (for add/replace)
+        oldValue:
+          description: Previous value (for remove/replace)
+
+  responses:
+    NotFound:
+      description: Document not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Not found
