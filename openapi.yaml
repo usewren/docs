@@ -22,6 +22,12 @@ tags:
     description: Named pointers into version history
   - name: diff
     description: Compare versions
+  - name: schemas
+    description: JSON Schema enforcement per collection
+  - name: assets
+    description: Binary asset upload, versioning and download for collections with `collectionType=binary`
+  - name: keys
+    description: API key management for server-to-server authentication
   - name: system
     description: Health and metadata
 
@@ -196,10 +202,41 @@ paths:
                     type: string
                     example: ok
 
+  /collections:
+    get:
+      summary: List all collections with document counts
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of collections
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collections:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        count:
+                          type: integer
+                        updatedAt:
+                          type: string
+                          format: date-time
+        "401":
+          description: Not authenticated
+
   /{collection}:
     get:
       summary: List documents
       tags: [documents]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - name: filter
@@ -236,8 +273,14 @@ paths:
                 $ref: "#/components/schemas/DocumentList"
 
     post:
-      summary: Create a document
-      tags: [documents]
+      summary: Create a document or upload a binary asset
+      description: |
+        For JSON collections send `Content-Type: application/json`.
+        For binary collections (`collectionType=binary`) send `Content-Type: multipart/form-data`
+        with a single `file` field containing the binary file.
+      tags: [documents, assets]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
       requestBody:
@@ -246,18 +289,33 @@ paths:
           application/json:
             schema:
               type: object
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The binary file to upload
       responses:
         "201":
-          description: Document created
+          description: Document created / asset uploaded
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentResponse"
+        "400":
+          description: Missing file field (binary upload)
+        "422":
+          $ref: "#/components/responses/SchemaValidationError"
 
   /{collection}/{id}:
     get:
       summary: Get current state of a document
       tags: [documents]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -277,8 +335,14 @@ paths:
           $ref: "#/components/responses/NotFound"
 
     put:
-      summary: Update a document (creates a new version)
-      tags: [documents]
+      summary: Update a document or replace a binary asset (creates a new version)
+      description: |
+        For JSON collections send `Content-Type: application/json`.
+        For binary collections (`collectionType=binary`) send `Content-Type: multipart/form-data`
+        with a single `file` field containing the new binary file.
+      tags: [documents, assets]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -288,19 +352,34 @@ paths:
           application/json:
             schema:
               type: object
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The new binary file to store as the next version
       responses:
         "200":
-          description: Document updated
+          description: Document updated / new asset version stored
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/DocumentResponse"
+        "400":
+          description: Missing file field (binary upload)
         "404":
           $ref: "#/components/responses/NotFound"
+        "422":
+          $ref: "#/components/responses/SchemaValidationError"
 
     delete:
       summary: Soft delete a document (creates a tombstone version)
       tags: [documents]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -312,8 +391,6 @@ paths:
               schema:
                 type: object
                 properties:
-                  collection:
-                    type: string
                   id:
                     type: string
                   deleted:
@@ -321,10 +398,90 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /{collection}/{id}/raw:
+    get:
+      summary: Download the binary content of an asset document
+      description: |
+        Returns the raw binary data for the latest version of an asset in a `collectionType=binary`
+        collection. Pass `?version=N` to retrieve a specific historical version.
+        The response `Content-Type` matches the MIME type recorded at upload time.
+      tags: [assets]
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - name: version
+          in: query
+          required: false
+          schema:
+            type: integer
+          description: Version number to retrieve (defaults to latest)
+      responses:
+        "200":
+          description: Binary file content
+          headers:
+            Content-Type:
+              schema:
+                type: string
+              description: MIME type recorded at upload time
+            Content-Disposition:
+              schema:
+                type: string
+              description: "`inline; filename=\"<original-filename>\"`"
+            Cache-Control:
+              schema:
+                type: string
+              description: "`public, max-age=31536000, immutable`"
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /{collection}/{id}/paths:
+    get:
+      summary: List all tree paths this document is assigned to
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200":
+          description: Tree path assignments for this document
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  collection:
+                    type: string
+                  paths:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        tree:
+                          type: string
+                          example: main
+                        path:
+                          type: string
+                          example: /site/about
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /{collection}/{id}/versions:
     get:
       summary: List version history of a document
       tags: [versions]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -349,6 +506,8 @@ paths:
     get:
       summary: Get document state at a specific version
       tags: [versions]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -367,29 +526,35 @@ paths:
     post:
       summary: Rollback document to a previous version (creates a new version)
       tags: [versions]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
         - $ref: "#/components/parameters/version"
       responses:
         "200":
-          description: Rollback successful
+          description: Rollback successful — a new version is created with the old content
           content:
             application/json:
               schema:
                 type: object
                 properties:
-                  collection:
-                    type: string
                   id:
                     type: string
+                  version:
+                    type: integer
+                    description: The new version number created by the rollback
                   rolledBackTo:
                     type: integer
+                    description: The source version whose content was restored
 
   /{collection}/{id}/labels:
     post:
       summary: Set a label on the current version
       tags: [labels]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
@@ -404,6 +569,9 @@ paths:
                 label:
                   type: string
                   example: published
+                version:
+                  type: integer
+                  description: Version to label (defaults to current version if omitted)
       responses:
         "200":
           description: Label set
@@ -412,32 +580,35 @@ paths:
               schema:
                 type: object
                 properties:
-                  collection:
-                    type: string
                   id:
                     type: string
                   label:
                     type: string
+                  version:
+                    type: integer
+                    description: The version the label now points to
 
   /{collection}/{id}/diff:
     get:
       summary: Diff between two versions or labels
       tags: [diff]
+      security:
+        - cookieAuth: []
       parameters:
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
         - name: v1
           in: query
           required: true
-          description: Version number or label name
+          description: Version number
           schema:
-            type: string
+            type: integer
         - name: v2
           in: query
           required: true
-          description: Version number or label name
+          description: Version number
           schema:
-            type: string
+            type: integer
       responses:
         "200":
           description: Diff result
@@ -446,18 +617,434 @@ paths:
               schema:
                 type: object
                 properties:
-                  collection:
-                    type: string
                   id:
                     type: string
+                  collection:
+                    type: string
                   v1:
-                    type: string
+                    type: integer
                   v2:
-                    type: string
+                    type: integer
                   diff:
                     type: array
                     items:
                       $ref: "#/components/schemas/DiffEntry"
+
+  /{collection}/_schema:
+    get:
+      summary: Get the JSON Schema, display name rule and collection type
+      tags: [schemas]
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Schema found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  collectionType:
+                    type: string
+                    enum: [json, binary]
+                    description: "`json` (default) stores JSON documents; `binary` stores file uploads."
+                  schema:
+                    type: object
+                    nullable: true
+                    description: A JSON Schema object. `null` for binary collections.
+                  displayName:
+                    type: string
+                    nullable: true
+                    description: |
+                      Template for building a human-readable display name from document fields.
+                      Use `{fieldName}` placeholders, e.g. `"{title}"` or `"{first} {last}"`.
+                    example: "{title}"
+                  updatedAt:
+                    type: string
+                    format: date-time
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Set the JSON Schema, display name rule and/or collection type
+      description: |
+        Accepts a wrapper object with optional `schema`, `displayName` and `collectionType` fields,
+        or a raw JSON Schema object (backward-compatible plain form).
+        Set `collectionType` to `"binary"` to mark a collection as a binary asset store —
+        validation is skipped and uploads use `multipart/form-data`.
+      tags: [schemas]
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - description: "Wrapper form — schema + optional displayName + optional collectionType"
+                  type: object
+                  properties:
+                    schema:
+                      type: object
+                      description: A valid JSON Schema object (omit for binary collections)
+                    displayName:
+                      type: string
+                      nullable: true
+                      description: Display name template, e.g. "{title}" or "{first} {last}"
+                      example: "{title}"
+                    collectionType:
+                      type: string
+                      enum: [json, binary]
+                      description: "`json` (default) or `binary`"
+                - description: "Plain form — raw JSON Schema (displayName and collectionType unchanged)"
+                  type: object
+      responses:
+        "200":
+          description: Schema saved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  collectionType:
+                    type: string
+                    enum: [json, binary]
+                  schema:
+                    type: object
+                    nullable: true
+                  displayName:
+                    type: string
+                    nullable: true
+        "422":
+          description: Invalid JSON Schema
+
+    delete:
+      summary: Remove the JSON Schema from a collection
+      tags: [schemas]
+      security:
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: Schema removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  collection:
+                    type: string
+                  deleted:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /tree:
+    get:
+      summary: List all named trees for this tenant
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      responses:
+        "200":
+          description: List of trees
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  trees:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        count:
+                          type: integer
+
+  /tree/{treeName}:
+    get:
+      summary: Get full tree — all paths with their assigned documents
+      description: |
+        When `full=true` is passed, returns every path in the named tree together with
+        the assigned document's current data. Useful for rendering a site map or diff
+        between two environments. Without `full=true` this endpoint is not used (path
+        traversal goes through `/tree/{treeName}/{path}`).
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: treeName
+          in: path
+          required: true
+          schema:
+            type: string
+          example: main
+        - name: full
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: ["true"]
+          description: Must be "true" to retrieve the full tree snapshot
+      responses:
+        "200":
+          description: Full tree snapshot
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tree:
+                    type: string
+                    example: main
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                          example: /site/en/about
+                        documentId:
+                          type: string
+                        document:
+                          type: object
+                          properties:
+                            id:
+                              type: string
+                            collection:
+                              type: string
+                            version:
+                              type: integer
+                            data:
+                              type: object
+        "401":
+          description: Unauthorized
+
+  /tree/{treeName}/{path}:
+    get:
+      summary: Get document at path and list immediate children in a named tree
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: treeName
+          in: path
+          required: true
+          schema:
+            type: string
+          example: main
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+          example: /site/en/about
+      responses:
+        "200":
+          description: Node found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  document:
+                    nullable: true
+                    allOf:
+                      - $ref: "#/components/schemas/DocumentResponse"
+                  assignmentDocId:
+                    type: string
+                    nullable: true
+                    description: ID of the _paths document tracking assignment history for this path
+                  children:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path:
+                          type: string
+                        documentId:
+                          type: string
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+    put:
+      summary: Assign a document to a tree path
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: treeName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [documentId]
+              properties:
+                documentId:
+                  type: string
+      responses:
+        "200":
+          description: Path assigned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  documentId:
+                    type: string
+        "400":
+          description: Missing documentId
+        "404":
+          description: Document not found
+
+    delete:
+      summary: Remove a document from a tree path (does not delete the document)
+      tags: [documents]
+      security:
+        - cookieAuth: []
+      parameters:
+        - name: treeName
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: path
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Path removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  path:
+                    type: string
+                  removed:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/keys:
+    get:
+      summary: List API keys
+      description: Returns all API keys for the authenticated user. Key values are never returned — only the prefix for identification.
+      tags: [keys]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of API keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ApiKey"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      summary: Create an API key
+      description: |
+        Creates a new API key. The full key value is returned **once only** in this response
+        and never stored in plaintext. Store it immediately.
+      tags: [keys]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  description: Human-readable label for this key, e.g. "marketing-site"
+      responses:
+        "201":
+          description: Key created — full key returned once
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/ApiKey"
+                  - type: object
+                    properties:
+                      key:
+                        type: string
+                        description: The full API key value. Shown once only.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/keys/{keyId}:
+    delete:
+      summary: Revoke an API key
+      description: Marks the key as revoked. Any subsequent requests using this key will receive 401.
+      tags: [keys]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: keyId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Key revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  revoked:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
 
 components:
   securitySchemes:
@@ -465,6 +1052,10 @@ components:
       type: apiKey
       in: cookie
       name: better-auth.session_token
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: "API key issued via POST /api/keys. Format — Authorization: Bearer wren_\u2026"
 
   parameters:
     collection:
@@ -491,6 +1082,28 @@ components:
         type: integer
 
   schemas:
+    ApiKey:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        keyPrefix:
+          type: string
+          description: First 12 characters of the key for identification, e.g. "wren_a3f4e5d2"
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+
     DocumentResponse:
       type: object
       properties:
@@ -509,6 +1122,11 @@ components:
           format: date-time
         data:
           type: object
+          description: |
+            For JSON collections this is the stored JSON object.
+            For binary collections the `data` field is a metadata envelope:
+            `{ "_binary": true, "filename": "photo.jpg", "mimeType": "image/jpeg", "size": 123456 }`.
+            Fetch the actual bytes via `GET /{collection}/{id}/raw`.
 
     DocumentList:
       type: object
@@ -544,10 +1162,8 @@ components:
         createdAt:
           type: string
           format: date-time
-        labels:
-          type: array
-          items:
-            type: string
+        createdBy:
+          type: string
 
     DiffEntry:
       type: object
@@ -574,3 +1190,21 @@ components:
               error:
                 type: string
                 example: Not found
+
+    SchemaValidationError:
+      description: Document failed JSON Schema validation
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Schema validation failed
+              details:
+                type: array
+                items:
+                  type: string
+                example:
+                  - "/title must be string"
+                  - "/ must have required property 'title'"
