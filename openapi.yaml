@@ -1190,6 +1190,95 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/invites/received:
+    get:
+      summary: List received invites
+      description: Returns all invites sent to the authenticated user's email address.
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of received invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        orgId:
+                          type: string
+                        orgName:
+                          type: string
+                        orgEmail:
+                          type: string
+                          format: email
+                        role:
+                          type: string
+                        createdAt:
+                          type: string
+                          format: date-time
+                        expiresAt:
+                          type: string
+                          format: date-time
+                        acceptedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+                        revokedAt:
+                          type: string
+                          format: date-time
+                          nullable: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/invites/{inviteId}/accept:
+    post:
+      summary: Accept a received invite by ID
+      description: |
+        Accepts an invite using only the invite ID. No token required — the server verifies
+        that the authenticated user's email matches the invite. Useful when the user is already
+        logged in and can see their received invites via `GET /api/invites/received`.
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                  orgId:
+                    type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Invite is for a different email address
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          description: Invite already accepted
+        "410":
+          description: Invite expired or revoked
+
   /api/invites/accept:
     post:
       summary: Accept an invite
