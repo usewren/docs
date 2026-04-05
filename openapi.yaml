@@ -28,6 +28,10 @@ tags:
     description: Binary asset upload, versioning and download for collections with `collectionType=binary`
   - name: keys
     description: API key management for server-to-server authentication
+  - name: invites
+    description: Invite collaborators to share your workspace
+  - name: members
+    description: Manage members of your org
   - name: system
     description: Health and metadata
 
@@ -1046,6 +1050,198 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/invites:
+    get:
+      summary: List invites
+      description: Returns all invites sent from the authenticated user's org.
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of invites
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  invites:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Invite"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    post:
+      summary: Create an invite
+      description: |
+        Creates a new invite for the given email address. The full invite token is returned
+        **once only** and never stored in plaintext. Use it to construct the accept link:
+        `{base}/admin#/invites/accept?token={token}`
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  default: member
+      responses:
+        "201":
+          description: Invite created — token returned once
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Invite"
+                  - type: object
+                    properties:
+                      token:
+                        type: string
+                        description: The full invite token. Shown once only.
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/invites/accept:
+    post:
+      summary: Accept an invite
+      description: |
+        Accepts an invite using the raw token. The authenticated user is added to the
+        org as a member. Requires the user to be signed in first.
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+      responses:
+        "200":
+          description: Invite accepted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accepted:
+                    type: boolean
+                  orgId:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          description: Invalid token
+        "409":
+          description: Invite already accepted
+        "410":
+          description: Invite expired or revoked
+
+  /api/invites/{inviteId}:
+    delete:
+      summary: Revoke an invite
+      description: Revokes a pending invite. Has no effect once accepted.
+      tags: [invites]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: inviteId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Invite revoked
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  revoked:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/members:
+    get:
+      summary: List org members
+      description: Returns all members of the authenticated user's org.
+      tags: [members]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: List of members
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  members:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Member"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/members/{memberId}:
+    delete:
+      summary: Remove a member
+      description: Removes a member from the org. The removed user will revert to their own tenant schema.
+      tags: [members]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Member removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  userId:
+                    type: string
+                  removed:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
 components:
   securitySchemes:
     cookieAuth:
@@ -1082,6 +1278,47 @@ components:
         type: integer
 
   schemas:
+    Invite:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        acceptedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Member:
+      type: object
+      properties:
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          format: email
+        role:
+          type: string
+        joinedAt:
+          type: string
+          format: date-time
+
     ApiKey:
       type: object
       properties:
