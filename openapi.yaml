@@ -28,6 +28,8 @@ tags:
     description: Binary asset upload, versioning and download for collections with `collectionType=binary`
   - name: keys
     description: API key management for server-to-server authentication
+  - name: org
+    description: Read and switch the active org for the current session
   - name: invites
     description: Invite collaborators to share your workspace
   - name: members
@@ -1049,6 +1051,80 @@ paths:
           $ref: "#/components/responses/NotFound"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/org:
+    get:
+      summary: Get active org
+      description: |
+        Returns the org the current session is scoped to, plus all orgs accessible to the user.
+        The active org determines which tenant schema is used for all data operations.
+        API key requests always use the key owner's own org — switching requires a browser session.
+      tags: [org]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Active org and available orgs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current:
+                    type: string
+                    description: The org_id (owner's userId) currently active for this session
+                  orgs:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        email:
+                          type: string
+                          format: email
+                        own:
+                          type: boolean
+                          description: True if this is the user's own org
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    put:
+      summary: Switch active org
+      description: |
+        Sets the active org for the current browser session. Only valid for cookie-based sessions —
+        API key requests cannot switch orgs. The user must be the owner or a member of the target org.
+      tags: [org]
+      security:
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [orgId]
+              properties:
+                orgId:
+                  type: string
+      responses:
+        "200":
+          description: Org switched
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  current:
+                    type: string
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not a member of that org
 
   /api/invites:
     get:
