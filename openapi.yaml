@@ -1516,6 +1516,11 @@ components:
           format: uuid
         version:
           type: integer
+        labels:
+          type: array
+          items:
+            type: string
+          description: Labels currently pointing at any version of this document
         createdAt:
           type: string
           format: date-time
@@ -1561,6 +1566,11 @@ components:
       properties:
         version:
           type: integer
+        labels:
+          type: array
+          items:
+            type: string
+          description: Labels pointing at this version
         createdAt:
           type: string
           format: date-time
