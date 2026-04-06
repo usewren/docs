@@ -413,6 +413,12 @@ paths:
         Returns the raw binary data for the latest version of an asset in a `collectionType=binary`
         collection. Pass `?version=N` to retrieve a specific historical version.
         The response `Content-Type` matches the MIME type recorded at upload time.
+
+        An optional filename suffix can be appended to the URL path for better download naming
+        in browsers and tools — the server ignores the suffix but the browser uses it:
+        ```
+        GET /api/v1/images/{id}/raw/photo.jpg
+        ```
       tags: [assets]
       security:
         - cookieAuth: []
@@ -1710,6 +1716,12 @@ paths:
         Streams the raw binary content (image, PDF, etc.) of a document in a binary collection
         that is publicly accessible (has a `principal='*'` read rule). No authentication required.
         Ideal for serving images directly in `<img src="...">` tags. Supports `?version=N`.
+
+        Append the original filename to the URL for reliable naming in browsers, download
+        managers, and command-line tools (`curl`, `wget`). The server ignores the suffix:
+        ```
+        GET /orgs/coral-tide-fox/images/{id}/raw/hero-photo.jpg
+        ```
       tags: [assets]
       parameters:
         - name: slug
