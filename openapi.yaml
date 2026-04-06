@@ -36,6 +36,8 @@ tags:
     description: Manage members of your org
   - name: system
     description: Health and metadata
+  - name: discovery
+    description: LLM and crawler discovery endpoints
 
 paths:
   /api/auth/sign-up/email:
@@ -1089,6 +1091,9 @@ paths:
                         own:
                           type: boolean
                           description: True if this is the user's own org
+                        slug:
+                          type: string
+                          example: "swift-river-peak"
         "401":
           $ref: "#/components/responses/Unauthorized"
     put:
@@ -1125,6 +1130,48 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           description: Not a member of that org
+
+  /api/org/slug:
+    put:
+      summary: Set org slug
+      description: |
+        Set a custom URL slug for the authenticated user's own organisation. Only the org owner
+        can change their slug. Slugs must be 3–40 characters: lowercase alphanumeric and hyphens,
+        no leading/trailing hyphens.
+      tags: [org]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug]
+              properties:
+                slug:
+                  type: string
+                  pattern: "^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$"
+                  example: "swift-river-peak"
+      responses:
+        "200":
+          description: Slug updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  slug:
+                    type: string
+        "400":
+          description: Invalid slug format
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: Not own org
+        "409":
+          description: Slug already taken
 
   /api/invites:
     get:
@@ -1575,6 +1622,80 @@ paths:
           $ref: "#/components/responses/Unauthorized"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /orgs/{slug}/llms.txt:
+    get:
+      summary: Public org data context (llms.txt)
+      description: |
+        Returns a plain-text Markdown document describing the organisation's publicly accessible
+        collections, schemas, labels, sample documents, and tree structure. Only data accessible
+        to unauthenticated requests (via permissions with principal='*') is included. Intended
+        for LLM crawlers and AI agents.
+      tags: [discovery]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org slug
+      responses:
+        "200":
+          description: Plain-text Markdown data context
+          content:
+            text/plain:
+              schema:
+                type: string
+        "404":
+          description: Org slug not found
+
+  /.well-known/llms.txt:
+    get:
+      summary: Instance owner public data context (llms.txt)
+      description: |
+        Returns the public data context for the instance owner's organisation (the
+        earliest-registered user). Follows the well-known URI convention (RFC 8615).
+        Same format as /orgs/{slug}/llms.txt.
+      tags: [discovery]
+      responses:
+        "200":
+          description: Plain-text Markdown data context
+          content:
+            text/plain:
+              schema:
+                type: string
+
+  /api/orgs/{slug}/llms.txt:
+    get:
+      summary: Authenticated org data context (llms.txt)
+      description: |
+        Returns the full data context for the specified organisation, filtered by what the
+        authenticated caller can access. Org owners and members see all collections and trees.
+        Includes schemas, label usage, sample documents, and full tree structure.
+      tags: [discovery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Org slug
+      responses:
+        "200":
+          description: Plain-text Markdown data context
+          content:
+            text/plain:
+              schema:
+                type: string
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: No access to this org
+        "404":
+          description: Org slug not found
 
 components:
   securitySchemes:
