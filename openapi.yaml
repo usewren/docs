@@ -1407,6 +1407,175 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/permissions:
+    get:
+      summary: List permission rules
+      description: Returns all permission rules for the active org. Only the org owner can call this.
+      tags: [permissions]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Permission list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  permissions:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Permission"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    post:
+      summary: Create or upsert a permission rule
+      description: |
+        Creates a permission rule for a principal on a resource. If a rule for the same
+        (principal, resource) pair already exists it is updated in place.
+        Only the org owner can call this.
+      tags: [permissions]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [principal, resource, access]
+              properties:
+                principal:
+                  type: string
+                  description: "`member:<userId>` or `key:<keyId>`"
+                  example: "member:abc123"
+                resource:
+                  type: string
+                  description: "`*` | `collection:<name>` | `collection:*` | `tree:<name>` | `tree:*`"
+                  example: "collection:golf-magazine"
+                access:
+                  type: string
+                  enum: [none, read, write, admin]
+                labelFilter:
+                  type: string
+                  nullable: true
+                  description: If set, reads are silently scoped to documents carrying this label
+                filterLang:
+                  type: string
+                  nullable: true
+                  enum: [jq, jmespath, jsonata]
+                  description: Language for the data filter expression
+                filterExpr:
+                  type: string
+                  nullable: true
+                  description: Expression applied to document `data` before returning to the principal
+                auditReads:
+                  type: boolean
+                  default: false
+                auditWrites:
+                  type: boolean
+                  default: false
+      responses:
+        "201":
+          description: Permission created/updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "400":
+          description: Validation error
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/permissions/{permissionId}:
+    put:
+      summary: Update a permission rule
+      description: Partially updates an existing permission rule. Only the org owner can call this.
+      tags: [permissions]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: permissionId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                access:
+                  type: string
+                  enum: [none, read, write, admin]
+                labelFilter:
+                  type: string
+                  nullable: true
+                filterLang:
+                  type: string
+                  nullable: true
+                  enum: [jq, jmespath, jsonata]
+                filterExpr:
+                  type: string
+                  nullable: true
+                auditReads:
+                  type: boolean
+                auditWrites:
+                  type: boolean
+      responses:
+        "200":
+          description: Updated permission
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Permission"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+    delete:
+      summary: Delete a permission rule
+      description: Permanently removes a permission rule. Only the org owner can call this.
+      tags: [permissions]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - name: permissionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Permission deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
 components:
   securitySchemes:
     cookieAuth:
@@ -1591,6 +1760,39 @@ components:
         oldValue:
           description: Previous value (for remove/replace)
 
+    Permission:
+      type: object
+      properties:
+        id:
+          type: string
+        principal:
+          type: string
+          description: "`member:<userId>` or `key:<keyId>`"
+        resource:
+          type: string
+          description: "`*` | `collection:<name>` | `collection:*` | `tree:<name>` | `tree:*`"
+        access:
+          type: string
+          enum: [none, read, write, admin]
+        labelFilter:
+          type: string
+          nullable: true
+          description: If set, reads are silently scoped to this label
+        filterLang:
+          type: string
+          nullable: true
+          enum: [jq, jmespath, jsonata]
+        filterExpr:
+          type: string
+          nullable: true
+        auditReads:
+          type: boolean
+        auditWrites:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+
   responses:
     NotFound:
       description: Document not found
@@ -1602,6 +1804,17 @@ components:
               error:
                 type: string
                 example: Not found
+
+    Forbidden:
+      description: Forbidden — insufficient permissions
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Forbidden
 
     SchemaValidationError:
       description: Document failed JSON Schema validation
