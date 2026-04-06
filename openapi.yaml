@@ -1623,6 +1623,124 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /orgs/{slug}/{collection}:
+    get:
+      summary: List public documents in a collection
+      description: |
+        Lists documents in a collection that is publicly accessible (has a `principal='*'` read
+        permission rule). No authentication required. Supports `?label=`, `?limit=`, `?cursor=`
+        query parameters. Data filters and label filters defined on the permission rule are applied.
+      tags: [documents]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: Org slug
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+          description: Collection name
+        - name: label
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: cursor
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Document list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Document" }
+                  total:
+                    type: integer
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Org slug not found
+
+  /orgs/{slug}/{collection}/{id}:
+    get:
+      summary: Get a public document
+      description: |
+        Returns a single document from a publicly accessible collection. No authentication
+        required. Supports `?label=` to fetch a specific labelled version.
+      tags: [documents]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: label
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /orgs/{slug}/{collection}/{id}/raw:
+    get:
+      summary: Serve a public binary asset
+      description: |
+        Streams the raw binary content (image, PDF, etc.) of a document in a binary collection
+        that is publicly accessible (has a `principal='*'` read rule). No authentication required.
+        Ideal for serving images directly in `<img src="...">` tags. Supports `?version=N`.
+      tags: [assets]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: version
+          in: query
+          schema: { type: integer }
+          description: Specific version to serve (defaults to current version)
+      responses:
+        "200":
+          description: Raw binary content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /orgs/{slug}/llms.txt:
     get:
       summary: Public org data context (llms.txt)
