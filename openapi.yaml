@@ -210,7 +210,7 @@ paths:
                     type: string
                     example: ok
 
-  /collections:
+  /api/v1/collections:
     get:
       summary: List all collections with document counts
       tags: [documents]
@@ -239,7 +239,7 @@ paths:
         "401":
           description: Not authenticated
 
-  /{collection}:
+  /api/v1/{collection}:
     get:
       summary: List documents
       tags: [documents]
@@ -318,7 +318,7 @@ paths:
         "422":
           $ref: "#/components/responses/SchemaValidationError"
 
-  /{collection}/{id}:
+  /api/v1/{collection}/{id}:
     get:
       summary: Get current state of a document
       tags: [documents]
@@ -406,7 +406,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/raw:
+  /api/v1/{collection}/{id}/raw:
     get:
       summary: Download the binary content of an asset document
       description: |
@@ -449,7 +449,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/paths:
+  /api/v1/{collection}/{id}/paths:
     get:
       summary: List all tree paths this document is assigned to
       tags: [documents]
@@ -484,7 +484,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/versions:
+  /api/v1/{collection}/{id}/versions:
     get:
       summary: List version history of a document
       tags: [versions]
@@ -510,7 +510,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/VersionMeta"
 
-  /{collection}/{id}/versions/{version}:
+  /api/v1/{collection}/{id}/versions/{version}:
     get:
       summary: Get document state at a specific version
       tags: [versions]
@@ -530,7 +530,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/rollback/{version}:
+  /api/v1/{collection}/{id}/rollback/{version}:
     post:
       summary: Rollback document to a previous version (creates a new version)
       tags: [versions]
@@ -557,7 +557,7 @@ paths:
                     type: integer
                     description: The source version whose content was restored
 
-  /{collection}/{id}/labels:
+  /api/v1/{collection}/{id}/labels:
     post:
       summary: Set a label on the current version
       tags: [labels]
@@ -596,7 +596,7 @@ paths:
                     type: integer
                     description: The version the label now points to
 
-  /{collection}/{id}/diff:
+  /api/v1/{collection}/{id}/diff:
     get:
       summary: Diff between two versions or labels
       tags: [diff]
@@ -638,7 +638,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/DiffEntry"
 
-  /{collection}/_schema:
+  /api/v1/{collection}/_schema:
     get:
       summary: Get the JSON Schema, display name rule and collection type
       tags: [schemas]
@@ -756,7 +756,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /tree:
+  /api/v1/tree:
     get:
       summary: List all named trees for this tenant
       tags: [documents]
@@ -780,14 +780,14 @@ paths:
                         count:
                           type: integer
 
-  /tree/{treeName}:
+  /api/v1/tree/{treeName}:
     get:
       summary: Get full tree — all paths with their assigned documents
       description: |
         When `full=true` is passed, returns every path in the named tree together with
         the assigned document's current data. Useful for rendering a site map or diff
         between two environments. Without `full=true` this endpoint is not used (path
-        traversal goes through `/tree/{treeName}/{path}`).
+        traversal goes through `/api/v1/tree/{treeName}/{path}`).
       tags: [documents]
       security:
         - cookieAuth: []
@@ -840,7 +840,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /tree/{treeName}/{path}:
+  /api/v1/tree/{treeName}/{path}:
     get:
       summary: Get document at path and list immediate children in a named tree
       tags: [documents]
@@ -963,7 +963,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/keys:
+  /api/v1/keys:
     get:
       summary: List API keys
       description: Returns all API keys for the authenticated user. Key values are never returned — only the prefix for identification.
@@ -1023,7 +1023,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/keys/{keyId}:
+  /api/v1/keys/{keyId}:
     delete:
       summary: Revoke an API key
       description: Marks the key as revoked. Any subsequent requests using this key will receive 401.
@@ -1054,7 +1054,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/org:
+  /api/v1/org:
     get:
       summary: Get active org
       description: |
@@ -1131,7 +1131,7 @@ paths:
         "403":
           description: Not a member of that org
 
-  /api/org/slug:
+  /api/v1/org/slug:
     put:
       summary: Set org slug
       description: |
@@ -1173,7 +1173,7 @@ paths:
         "409":
           description: Slug already taken
 
-  /api/invites:
+  /api/v1/invites:
     get:
       summary: List invites
       description: Returns all invites sent from the authenticated user's org.
@@ -1237,7 +1237,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/invites/received:
+  /api/v1/invites/received:
     get:
       summary: List received invites
       description: Returns all invites sent to the authenticated user's email address.
@@ -1286,13 +1286,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/invites/{inviteId}/accept:
+  /api/v1/invites/{inviteId}/accept:
     post:
       summary: Accept a received invite by ID
       description: |
         Accepts an invite using only the invite ID. No token required — the server verifies
         that the authenticated user's email matches the invite. Useful when the user is already
-        logged in and can see their received invites via `GET /api/invites/received`.
+        logged in and can see their received invites via `GET /api/v1/invites/received`.
       tags: [invites]
       security:
         - cookieAuth: []
@@ -1326,7 +1326,7 @@ paths:
         "410":
           description: Invite expired or revoked
 
-  /api/invites/accept:
+  /api/v1/invites/accept:
     post:
       summary: Accept an invite
       description: |
@@ -1369,7 +1369,7 @@ paths:
         "410":
           description: Invite expired or revoked
 
-  /api/invites/{inviteId}:
+  /api/v1/invites/{inviteId}:
     delete:
       summary: Revoke an invite
       description: Revokes a pending invite. Has no effect once accepted.
@@ -1400,7 +1400,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/members:
+  /api/v1/members:
     get:
       summary: List org members
       description: Returns all members of the authenticated user's org.
@@ -1423,7 +1423,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/members/{memberId}:
+  /api/v1/members/{memberId}:
     delete:
       summary: Remove a member
       description: Removes a member from the org. The removed user will revert to their own tenant schema.
@@ -1454,7 +1454,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/permissions:
+  /api/v1/permissions:
     get:
       summary: List permission rules
       description: Returns all permission rules for the active org. Only the org owner can call this.
@@ -1540,7 +1540,7 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
-  /api/permissions/{permissionId}:
+  /api/v1/permissions/{permissionId}:
     put:
       summary: Update a permission rule
       description: Partially updates an existing permission rule. Only the org owner can call this.
@@ -1665,7 +1665,7 @@ paths:
               schema:
                 type: string
 
-  /api/orgs/{slug}/llms.txt:
+  /api/v1/orgs/{slug}/llms.txt:
     get:
       summary: Authenticated org data context (llms.txt)
       description: |
@@ -1706,7 +1706,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "API key issued via POST /api/keys. Format — Authorization: Bearer wren_\u2026"
+      description: "API key issued via POST /api/v1/keys. Format — Authorization: Bearer wren_\u2026"
 
   parameters:
     collection:
@@ -1823,7 +1823,7 @@ components:
             For JSON collections this is the stored JSON object.
             For binary collections the `data` field is a metadata envelope:
             `{ "_binary": true, "filename": "photo.jpg", "mimeType": "image/jpeg", "size": 123456 }`.
-            Fetch the actual bytes via `GET /{collection}/{id}/raw`.
+            Fetch the actual bytes via `GET /api/v1/{collection}/{id}/raw`.
 
     DocumentList:
       type: object
