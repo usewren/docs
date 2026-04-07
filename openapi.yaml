@@ -210,7 +210,7 @@ paths:
                     type: string
                     example: ok
 
-  /collections:
+  /api/v1/collections:
     get:
       summary: List all collections with document counts
       tags: [documents]
@@ -239,7 +239,7 @@ paths:
         "401":
           description: Not authenticated
 
-  /{collection}:
+  /api/v1/{collection}:
     get:
       summary: List documents
       tags: [documents]
@@ -318,7 +318,7 @@ paths:
         "422":
           $ref: "#/components/responses/SchemaValidationError"
 
-  /{collection}/{id}:
+  /api/v1/{collection}/{id}:
     get:
       summary: Get current state of a document
       tags: [documents]
@@ -406,13 +406,19 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/raw:
+  /api/v1/{collection}/{id}/raw:
     get:
       summary: Download the binary content of an asset document
       description: |
         Returns the raw binary data for the latest version of an asset in a `collectionType=binary`
         collection. Pass `?version=N` to retrieve a specific historical version.
         The response `Content-Type` matches the MIME type recorded at upload time.
+
+        An optional filename suffix can be appended to the URL path for better download naming
+        in browsers and tools — the server ignores the suffix but the browser uses it:
+        ```
+        GET /api/v1/images/{id}/raw/photo.jpg
+        ```
       tags: [assets]
       security:
         - cookieAuth: []
@@ -449,7 +455,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/paths:
+  /api/v1/{collection}/{id}/paths:
     get:
       summary: List all tree paths this document is assigned to
       tags: [documents]
@@ -484,7 +490,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/versions:
+  /api/v1/{collection}/{id}/versions:
     get:
       summary: List version history of a document
       tags: [versions]
@@ -510,7 +516,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/VersionMeta"
 
-  /{collection}/{id}/versions/{version}:
+  /api/v1/{collection}/{id}/versions/{version}:
     get:
       summary: Get document state at a specific version
       tags: [versions]
@@ -530,7 +536,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /{collection}/{id}/rollback/{version}:
+  /api/v1/{collection}/{id}/rollback/{version}:
     post:
       summary: Rollback document to a previous version (creates a new version)
       tags: [versions]
@@ -557,7 +563,7 @@ paths:
                     type: integer
                     description: The source version whose content was restored
 
-  /{collection}/{id}/labels:
+  /api/v1/{collection}/{id}/labels:
     post:
       summary: Set a label on the current version
       tags: [labels]
@@ -596,7 +602,7 @@ paths:
                     type: integer
                     description: The version the label now points to
 
-  /{collection}/{id}/diff:
+  /api/v1/{collection}/{id}/diff:
     get:
       summary: Diff between two versions or labels
       tags: [diff]
@@ -638,7 +644,7 @@ paths:
                     items:
                       $ref: "#/components/schemas/DiffEntry"
 
-  /{collection}/_schema:
+  /api/v1/{collection}/_schema:
     get:
       summary: Get the JSON Schema, display name rule and collection type
       tags: [schemas]
@@ -756,7 +762,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /tree:
+  /api/v1/tree:
     get:
       summary: List all named trees for this tenant
       tags: [documents]
@@ -780,14 +786,14 @@ paths:
                         count:
                           type: integer
 
-  /tree/{treeName}:
+  /api/v1/tree/{treeName}:
     get:
       summary: Get full tree — all paths with their assigned documents
       description: |
         When `full=true` is passed, returns every path in the named tree together with
         the assigned document's current data. Useful for rendering a site map or diff
         between two environments. Without `full=true` this endpoint is not used (path
-        traversal goes through `/tree/{treeName}/{path}`).
+        traversal goes through `/api/v1/tree/{treeName}/{path}`).
       tags: [documents]
       security:
         - cookieAuth: []
@@ -840,7 +846,7 @@ paths:
         "401":
           description: Unauthorized
 
-  /tree/{treeName}/{path}:
+  /api/v1/tree/{treeName}/{path}:
     get:
       summary: Get document at path and list immediate children in a named tree
       tags: [documents]
@@ -963,7 +969,7 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/keys:
+  /api/v1/keys:
     get:
       summary: List API keys
       description: Returns all API keys for the authenticated user. Key values are never returned — only the prefix for identification.
@@ -1023,7 +1029,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/keys/{keyId}:
+  /api/v1/keys/{keyId}:
     delete:
       summary: Revoke an API key
       description: Marks the key as revoked. Any subsequent requests using this key will receive 401.
@@ -1054,7 +1060,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/org:
+  /api/v1/org:
     get:
       summary: Get active org
       description: |
@@ -1131,7 +1137,7 @@ paths:
         "403":
           description: Not a member of that org
 
-  /api/org/slug:
+  /api/v1/org/slug:
     put:
       summary: Set org slug
       description: |
@@ -1173,7 +1179,7 @@ paths:
         "409":
           description: Slug already taken
 
-  /api/invites:
+  /api/v1/invites:
     get:
       summary: List invites
       description: Returns all invites sent from the authenticated user's org.
@@ -1237,7 +1243,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/invites/received:
+  /api/v1/invites/received:
     get:
       summary: List received invites
       description: Returns all invites sent to the authenticated user's email address.
@@ -1286,13 +1292,13 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/invites/{inviteId}/accept:
+  /api/v1/invites/{inviteId}/accept:
     post:
       summary: Accept a received invite by ID
       description: |
         Accepts an invite using only the invite ID. No token required — the server verifies
         that the authenticated user's email matches the invite. Useful when the user is already
-        logged in and can see their received invites via `GET /api/invites/received`.
+        logged in and can see their received invites via `GET /api/v1/invites/received`.
       tags: [invites]
       security:
         - cookieAuth: []
@@ -1326,7 +1332,7 @@ paths:
         "410":
           description: Invite expired or revoked
 
-  /api/invites/accept:
+  /api/v1/invites/accept:
     post:
       summary: Accept an invite
       description: |
@@ -1369,7 +1375,7 @@ paths:
         "410":
           description: Invite expired or revoked
 
-  /api/invites/{inviteId}:
+  /api/v1/invites/{inviteId}:
     delete:
       summary: Revoke an invite
       description: Revokes a pending invite. Has no effect once accepted.
@@ -1400,7 +1406,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/members:
+  /api/v1/members:
     get:
       summary: List org members
       description: Returns all members of the authenticated user's org.
@@ -1423,7 +1429,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/members/{memberId}:
+  /api/v1/members/{memberId}:
     delete:
       summary: Remove a member
       description: Removes a member from the org. The removed user will revert to their own tenant schema.
@@ -1454,7 +1460,7 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
-  /api/permissions:
+  /api/v1/permissions:
     get:
       summary: List permission rules
       description: Returns all permission rules for the active org. Only the org owner can call this.
@@ -1540,7 +1546,7 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
-  /api/permissions/{permissionId}:
+  /api/v1/permissions/{permissionId}:
     put:
       summary: Update a permission rule
       description: Partially updates an existing permission rule. Only the org owner can call this.
@@ -1623,31 +1629,129 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
-  /orgs/{slug}/llms.txt:
+  /api/v1/orgs/{slug}/{collection}:
     get:
-      summary: Public org data context (llms.txt)
+      summary: List public documents in a collection
       description: |
-        Returns a plain-text Markdown document describing the organisation's publicly accessible
-        collections, schemas, labels, sample documents, and tree structure. Only data accessible
-        to unauthenticated requests (via permissions with principal='*') is included. Intended
-        for LLM crawlers and AI agents.
-      tags: [discovery]
+        Lists documents in a collection that is publicly accessible (has a `principal='*'` read
+        permission rule). No authentication required. Supports `?label=`, `?limit=`, `?cursor=`
+        query parameters. Data filters and label filters defined on the permission rule are applied.
+      tags: [documents]
       parameters:
         - name: slug
           in: path
           required: true
-          schema:
-            type: string
+          schema: { type: string }
           description: Org slug
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+          description: Collection name
+        - name: label
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: cursor
+          in: query
+          schema: { type: string }
       responses:
         "200":
-          description: Plain-text Markdown data context
+          description: Document list
           content:
-            text/plain:
+            application/json:
               schema:
-                type: string
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Document" }
+                  total:
+                    type: integer
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           description: Org slug not found
+
+  /api/v1/orgs/{slug}/{collection}/{id}:
+    get:
+      summary: Get a public document
+      description: |
+        Returns a single document from a publicly accessible collection. No authentication
+        required. Supports `?label=` to fetch a specific labelled version.
+      tags: [documents]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: label
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: Document
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/v1/orgs/{slug}/{collection}/{id}/raw:
+    get:
+      summary: Serve a public binary asset
+      description: |
+        Streams the raw binary content (image, PDF, etc.) of a document in a binary collection
+        that is publicly accessible (has a `principal='*'` read rule). No authentication required.
+        Ideal for serving images directly in `<img src="...">` tags. Supports `?version=N`.
+
+        Append the original filename to the URL for reliable naming in browsers, download
+        managers, and command-line tools (`curl`, `wget`). The server ignores the suffix:
+        ```
+        GET /api/v1/orgs/coral-tide-fox/images/{id}/raw/hero-photo.jpg
+        ```
+      tags: [assets]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+        - name: collection
+          in: path
+          required: true
+          schema: { type: string }
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: version
+          in: query
+          schema: { type: integer }
+          description: Specific version to serve (defaults to current version)
+      responses:
+        "200":
+          description: Raw binary content
+          content:
+            "*/*":
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /.well-known/llms.txt:
     get:
@@ -1655,7 +1759,7 @@ paths:
       description: |
         Returns the public data context for the instance owner's organisation (the
         earliest-registered user). Follows the well-known URI convention (RFC 8615).
-        Same format as /orgs/{slug}/llms.txt.
+        Same format as /api/v1/orgs/{slug}/llms.txt.
       tags: [discovery]
       responses:
         "200":
@@ -1665,15 +1769,21 @@ paths:
               schema:
                 type: string
 
-  /api/orgs/{slug}/llms.txt:
+  /api/v1/orgs/{slug}/llms.txt:
     get:
-      summary: Authenticated org data context (llms.txt)
+      summary: Org data context (llms.txt) — context-aware
       description: |
-        Returns the full data context for the specified organisation, filtered by what the
-        authenticated caller can access. Org owners and members see all collections and trees.
-        Includes schemas, label usage, sample documents, and full tree structure.
+        Returns a plain-text Markdown document describing the organisation's collections,
+        schemas, labels, sample documents, and tree structure.
+
+        **Context-aware:** authentication is optional.
+        - No session / API key → only data covered by `principal='*'` read rules is included
+        - Valid session / API key → full context visible to the authenticated caller
+
+        Intended for LLM crawlers (unauthenticated) and AI agents (authenticated).
       tags: [discovery]
       security:
+        - {}
         - bearerAuth: []
         - cookieAuth: []
       parameters:
@@ -1706,7 +1816,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: "API key issued via POST /api/keys. Format — Authorization: Bearer wren_\u2026"
+      description: "API key issued via POST /api/v1/keys. Format — Authorization: Bearer wren_\u2026"
 
   parameters:
     collection:
@@ -1823,7 +1933,7 @@ components:
             For JSON collections this is the stored JSON object.
             For binary collections the `data` field is a metadata envelope:
             `{ "_binary": true, "filename": "photo.jpg", "mimeType": "image/jpeg", "size": 123456 }`.
-            Fetch the actual bytes via `GET /{collection}/{id}/raw`.
+            Fetch the actual bytes via `GET /api/v1/{collection}/{id}/raw`.
 
     DocumentList:
       type: object
