@@ -1179,6 +1179,60 @@ paths:
         "409":
           description: Slug already taken
 
+  /api/v1/org/usage:
+    get:
+      summary: Get org usage
+      description: |
+        Returns disk usage and request read/write counts for the authenticated user's active org.
+
+        - **disk.bytes** — total size of all tenant schema tables, from `pg_relation_size()`. Cached for 5 minutes.
+        - **requests.last30Days** — aggregate reads and writes over the last 30 days.
+        - **requests.daily** — per-day breakdown, most recent first. Includes today's in-memory (not-yet-flushed) counts.
+
+        Request counters are accumulated in memory and flushed to the database hourly.
+      tags: [org]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Org usage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  disk:
+                    type: object
+                    properties:
+                      bytes:
+                        type: integer
+                        description: Total storage used by all tenant tables, in bytes
+                  requests:
+                    type: object
+                    properties:
+                      last30Days:
+                        type: object
+                        properties:
+                          reads:
+                            type: integer
+                          writes:
+                            type: integer
+                      daily:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            date:
+                              type: string
+                              format: date
+                            reads:
+                              type: integer
+                            writes:
+                              type: integer
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/invites:
     get:
       summary: List invites
