@@ -677,6 +677,15 @@ paths:
                       Template for building a human-readable display name from document fields.
                       Use `{fieldName}` placeholders, e.g. `"{title}"` or `"{first} {last}"`.
                     example: "{title}"
+                  listColumns:
+                    type: array
+                    nullable: true
+                    items:
+                      type: string
+                    description: |
+                      Field names to display as extra columns in the Admin UI document list.
+                      e.g. `["date", "venue", "status"]`
+                    example: ["date", "venue"]
                   updatedAt:
                     type: string
                     format: date-time
@@ -684,9 +693,9 @@ paths:
           $ref: "#/components/responses/NotFound"
 
     put:
-      summary: Set the JSON Schema, display name rule and/or collection type
+      summary: Set the JSON Schema, display name rule, list columns and/or collection type
       description: |
-        Accepts a wrapper object with optional `schema`, `displayName` and `collectionType` fields,
+        Accepts a wrapper object with optional `schema`, `displayName`, `listColumns` and `collectionType` fields,
         or a raw JSON Schema object (backward-compatible plain form).
         Set `collectionType` to `"binary"` to mark a collection as a binary asset store —
         validation is skipped and uploads use `multipart/form-data`.
@@ -701,7 +710,7 @@ paths:
           application/json:
             schema:
               oneOf:
-                - description: "Wrapper form — schema + optional displayName + optional collectionType"
+                - description: "Wrapper form — schema + optional displayName + optional listColumns + optional collectionType"
                   type: object
                   properties:
                     schema:
@@ -712,6 +721,13 @@ paths:
                       nullable: true
                       description: Display name template, e.g. "{title}" or "{first} {last}"
                       example: "{title}"
+                    listColumns:
+                      type: array
+                      nullable: true
+                      items:
+                        type: string
+                      description: Field names to show as columns in the Admin UI document list
+                      example: ["date", "venue"]
                     collectionType:
                       type: string
                       enum: [json, binary]
@@ -737,6 +753,11 @@ paths:
                   displayName:
                     type: string
                     nullable: true
+                  listColumns:
+                    type: array
+                    nullable: true
+                    items:
+                      type: string
         "422":
           description: Invalid JSON Schema
 
