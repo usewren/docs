@@ -7,6 +7,10 @@ info:
     Every mutation creates a version. Versions can be labeled (e.g. `published`, `draft`).
     All responses are streamed. Security and multi-tenancy are built in.
 
+    **Clean public URLs:** `/orgs/{slug}/...` is a short alias for `/api/v1/orgs/{slug}/...`,
+    intended for browser-facing URLs. For example, `/orgs/acme/tree/site/index.html` opens
+    directly in a browser without needing to know the `/api/v1` prefix.
+
 servers:
   - url: http://localhost:4000
     description: Local sandbox
