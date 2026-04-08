@@ -870,6 +870,12 @@ paths:
   /api/v1/tree/{treeName}/{path}:
     get:
       summary: Get document at path and list immediate children in a named tree
+      description: |
+        Returns the document assigned at `path` and its immediate children.
+        Supports content negotiation for binary assets: when the resolved document is a binary
+        asset (`_binary: true`), sending `Accept: text/html` or any non-JSON type streams the
+        raw file bytes (same as `/raw`). `Accept: application/json` or no Accept header always
+        returns the JSON envelope.
       tags: [documents]
       security:
         - cookieAuth: []
@@ -1706,12 +1712,22 @@ paths:
 
   /api/v1/orgs/{slug}/tree/{treeName}:
     get:
-      summary: Get a public tree node
+      summary: Get a public tree node (with content negotiation)
       description: |
         Returns the tree node at the root of `treeName`, or at a specific path when the path
         is appended to the URL (e.g. `/api/v1/orgs/{slug}/tree/{treeName}/sports/tennis`).
         Access is gated by a `principal='*'` read rule on `tree:{treeName}`. No authentication
         required. Append `?full=true` to return the entire subtree as a nested object.
+
+        **Content negotiation for binary assets:** when the resolved document is a binary asset
+        (`_binary: true`) the response varies by `Accept` header:
+
+        - `Accept: application/json` — always returns the JSON metadata envelope.
+        - `Accept: text/html`, `image/*`, or any other non-JSON type (e.g. a browser request)
+          — streams the raw file bytes with the stored `Content-Type`, identical to the `/raw`
+          endpoint. This allows URLs like `/orgs/acme/tree/site/index.html` to be opened
+          directly in a browser.
+        - No `Accept` header or `Accept: */*` only — returns JSON (backwards-compatible default).
       tags: [trees]
       security: {}
       parameters:
@@ -1735,11 +1751,15 @@ paths:
           description: Filter by label (only applies when `?full=true`)
       responses:
         "200":
-          description: Tree node or subtree
+          description: Tree node, subtree, or raw binary asset (content-negotiated)
           content:
             application/json:
               schema:
                 type: object
+            "*/*":
+              schema:
+                type: string
+                format: binary
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
