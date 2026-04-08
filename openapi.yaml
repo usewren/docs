@@ -1704,6 +1704,47 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/v1/orgs/{slug}/tree/{treeName}:
+    get:
+      summary: Get a public tree node
+      description: |
+        Returns the tree node at the root of `treeName`, or at a specific path when the path
+        is appended to the URL (e.g. `/api/v1/orgs/{slug}/tree/{treeName}/sports/tennis`).
+        Access is gated by a `principal='*'` read rule on `tree:{treeName}`. No authentication
+        required. Append `?full=true` to return the entire subtree as a nested object.
+      tags: [trees]
+      security: {}
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+          description: Org slug
+        - name: treeName
+          in: path
+          required: true
+          schema: { type: string }
+          description: Tree name
+        - name: full
+          in: query
+          schema: { type: boolean }
+          description: Return the entire subtree instead of a single node
+        - name: label
+          in: query
+          schema: { type: string }
+          description: Filter by label (only applies when `?full=true`)
+      responses:
+        "200":
+          description: Tree node or subtree
+          content:
+            application/json:
+              schema:
+                type: object
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          description: Org slug or tree path not found
+
   /api/v1/orgs/{slug}/{collection}:
     get:
       summary: List public documents in a collection
