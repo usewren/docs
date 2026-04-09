@@ -910,6 +910,9 @@ paths:
                     nullable: true
                     allOf:
                       - $ref: "#/components/schemas/DocumentResponse"
+                  pathExists:
+                    type: boolean
+                    description: Whether this path has an explicit entry in the tree (true for both folders and document assignments)
                   assignmentDocId:
                     type: string
                     nullable: true
@@ -927,7 +930,12 @@ paths:
           $ref: "#/components/responses/NotFound"
 
     put:
-      summary: Assign a document to a tree path
+      summary: Assign a document to a tree path, or create an empty folder
+      description: |
+        If `documentId` is provided, assigns that document to the path.
+        If `documentId` is omitted or null, creates an empty folder (a path entry with no
+        document). Empty folders appear in the tree browser and can have children assigned
+        to them later.
       tags: [documents]
       security:
         - cookieAuth: []
@@ -948,13 +956,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [documentId]
               properties:
                 documentId:
                   type: string
+                  nullable: true
+                  description: Document ID to assign. Omit to create an empty folder.
       responses:
         "200":
-          description: Path assigned
+          description: Path assigned or folder created
           content:
             application/json:
               schema:
@@ -964,8 +973,7 @@ paths:
                     type: string
                   documentId:
                     type: string
-        "400":
-          description: Missing documentId
+                    nullable: true
         "404":
           description: Document not found
 
