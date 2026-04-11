@@ -820,6 +820,114 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/{collection}/_schema/validate:
+    get:
+      summary: Dry-run the current schema against every existing document
+      description: |
+        Runs the collection's currently-stored JSON Schema against every existing document at
+        its current version and reports which documents would fail. This is a read-only
+        operation — nothing is mutated, no new version is created, and the stored schema is
+        untouched.
+
+        Use `POST` with a request body instead to dry-run a **proposed** schema that is not
+        yet set, which is the intended "what happens if I tighten this" safety check before
+        calling `PUT /api/v1/{collection}/_schema`.
+
+        Requires `read` access to `collection:{name}`. Schema changes still require `admin`.
+      tags: [schemas]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: max
+          in: query
+          description: Max documents to check (default 10000, capped at 50000)
+          schema:
+            type: integer
+            default: 10000
+            minimum: 1
+            maximum: 50000
+        - name: limit
+          in: query
+          description: Max failure details to return (default 100, capped at 1000)
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      responses:
+        "200":
+          description: Validation report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateSchemaReport"
+        "400":
+          description: Binary collection — validation not applicable
+        "404":
+          description: No schema set on this collection (and no proposed schema provided)
+
+    post:
+      summary: Dry-run a proposed schema against every existing document
+      description: |
+        Same as `GET /api/v1/{collection}/_schema/validate`, but validates against a
+        **proposed** schema supplied in the request body instead of the currently-stored
+        one. Use this to answer "what breaks if I set this schema?" before actually
+        calling `PUT /api/v1/{collection}/_schema`.
+
+        Nothing is mutated. The stored schema is not touched, no new document version is
+        created, and the request does not count as a schema change.
+
+        The body may be either a wrapper (`{"schema": {...}}`) matching `handleSetSchema`'s
+        format or a plain JSON Schema object. If the body is omitted or empty, the endpoint
+        behaves exactly like the `GET` variant and uses the currently-stored schema.
+      tags: [schemas]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: max
+          in: query
+          schema:
+            type: integer
+            default: 10000
+            minimum: 1
+            maximum: 50000
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            minimum: 1
+            maximum: 1000
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - description: Wrapper form — proposed schema under `schema`
+                  type: object
+                  properties:
+                    schema:
+                      type: object
+                      description: A valid JSON Schema object to dry-run
+                - description: Plain form — the body itself is the JSON Schema
+                  type: object
+      responses:
+        "200":
+          description: Validation report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidateSchemaReport"
+        "400":
+          description: Binary collection — validation not applicable
+        "422":
+          description: The proposed schema is not a valid JSON Schema
+
   /api/v1/tree:
     get:
       summary: List all named trees for this tenant
@@ -2075,6 +2183,52 @@ components:
         type: integer
 
   schemas:
+    ValidateSchemaReport:
+      type: object
+      description: |
+        Result of a dry-run schema validation. `checked` is how many documents the endpoint
+        actually looked at (bounded by `?max=`). `valid` + `invalid` always equals `checked`.
+        `failures` contains at most `?limit=` entries; `failuresTruncated` is true when more
+        invalid documents existed than could be reported.
+      properties:
+        collection:
+          type: string
+        schemaSource:
+          type: string
+          enum: [current, proposed]
+          description: Whether validation ran against the stored schema or one from the request body.
+        checked:
+          type: integer
+          description: Number of documents actually examined.
+        limitReached:
+          type: boolean
+          description: True if the collection has more documents than `?max=` — re-run with a larger max to check the rest.
+        valid:
+          type: integer
+          description: Number of documents that passed validation.
+        invalid:
+          type: integer
+          description: Number of documents that failed validation.
+        failures:
+          type: array
+          description: Details of up to `?limit=` failing documents, starting with the most recently created.
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              version:
+                type: integer
+                description: The current version number of the document that failed.
+              errors:
+                type: array
+                description: ajv error messages, one per failing constraint.
+                items:
+                  type: string
+        failuresTruncated:
+          type: boolean
+          description: True if `invalid > failures.length` — the full list was truncated by `?limit=`.
+
     Invite:
       type: object
       properties:
