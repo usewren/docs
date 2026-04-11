@@ -11,6 +11,15 @@ info:
     intended for browser-facing URLs. For example, `/orgs/acme/tree/site/index.html` opens
     directly in a browser without needing to know the `/api/v1` prefix.
 
+    **Caching.** Public read endpoints emit `Cache-Control: public, max-age=60,
+    stale-while-revalidate=86400` — browsers and CDNs can serve responses for a minute without
+    checking, and may serve stale responses for up to a day while revalidating in the background.
+    Tree and raw-asset responses also emit `Vary: Accept` so content-negotiated URLs (the ones
+    that can return either JSON metadata or raw bytes) are cached separately per Accept header —
+    a JSON probe cannot poison the HTML response for the same URL. Wren dispatches an explicit
+    cache purge to its configured CDN backend (default: no-op) after every successful mutation,
+    so edits are visible to readers within the freshness window.
+
 servers:
   - url: http://localhost:4000
     description: Local sandbox
@@ -936,6 +945,17 @@ paths:
         If `documentId` is omitted or null, creates an empty folder (a path entry with no
         document). Empty folders appear in the tree browser and can have children assigned
         to them later.
+
+        **First-write hint.** When this call creates a path in a tree that didn't exist before,
+        the response includes a one-off `hint` object explaining whether the tree is publicly
+        readable. If no `principal='*'` read rule covers the tree, the hint includes a copy-pastable
+        permission rule to make it public. Subsequent PUTs against the same tree do not include
+        the hint.
+
+        **Cache invalidation.** Any successful PUT on a tree path triggers a cache purge for
+        every public URL that could reference the path (the path itself, the short alias,
+        ancestors, and `?full=true` bundles of the tree). The purge is dispatched to whatever
+        CDN backend is configured via `CACHE_PURGE_BACKEND` (default: no-op; see tutorial).
       tags: [documents]
       security:
         - cookieAuth: []
@@ -969,11 +989,51 @@ paths:
               schema:
                 type: object
                 properties:
+                  tree:
+                    type: string
                   path:
                     type: string
                   documentId:
                     type: string
                     nullable: true
+                  hint:
+                    type: object
+                    description: |
+                      Included only on the first PUT that creates a new tree. Tells the caller
+                      that the tree is not publicly readable by default and provides a ready-to-run
+                      permission rule. Omitted on subsequent PUTs against an existing tree.
+                    properties:
+                      created_tree:
+                        type: string
+                        description: Name of the tree that was just created.
+                      message:
+                        type: string
+                        description: Human-readable explanation of the tree's current read state.
+                      public_read_example:
+                        type: object
+                        nullable: true
+                        description: |
+                          A copy-pastable example of a permission rule that would make the tree
+                          publicly readable. Null if a covering rule already exists.
+                        properties:
+                          method:
+                            type: string
+                            example: POST
+                          url:
+                            type: string
+                            example: /api/v1/permissions
+                          body:
+                            type: object
+                            properties:
+                              principal:
+                                type: string
+                                example: "*"
+                              resource:
+                                type: string
+                                example: "tree:events"
+                              access:
+                                type: string
+                                example: "read"
         "404":
           description: Document not found
 
