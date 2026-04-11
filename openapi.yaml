@@ -556,6 +556,16 @@ paths:
   /api/v1/{collection}/{id}/rollback/{version}:
     post:
       summary: Rollback document to a previous version (creates a new version)
+      description: |
+        Copies the data from version `{version}` into a new version at the head of the document.
+        The old versions are preserved — rollback is just another write, not a delete.
+
+        **Schema is not enforced on rollback.** If the collection's schema has been tightened
+        since the target version was written, the rollback still succeeds — the old data is
+        written verbatim as a new version without being run through the validator. The next
+        `PUT` on that document, however, must satisfy the current schema. This is intentional
+        (rollback is a history replay, not a new edit) but worth knowing before you rely on
+        schemas for hard invariants.
       tags: [versions]
       security:
         - cookieAuth: []
@@ -716,6 +726,16 @@ paths:
         or a raw JSON Schema object (backward-compatible plain form).
         Set `collectionType` to `"binary"` to mark a collection as a binary asset store —
         validation is skipped and uploads use `multipart/form-data`.
+
+        **Existing documents are not re-validated.** Setting or changing a schema only affects
+        subsequent writes. Existing documents that no longer match the new schema are
+        grandfathered — reads continue to return them as-is, but any `PUT` to one of those
+        documents must bring it into compliance or it will be rejected with `422`. Rollback is
+        also unvalidated: `POST /api/v1/{collection}/{id}/rollback/{v}` writes a new version
+        containing the old data without checking the current schema, so you can roll a document
+        back to a pre-schema version even after tightening the rules. There is currently no
+        bulk re-validation or migration tool; tighten schemas with care on collections that
+        already hold data.
       tags: [schemas]
       security:
         - cookieAuth: []
