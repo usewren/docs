@@ -20,6 +20,10 @@ info:
     cache purge to its configured CDN backend (default: no-op) after every successful mutation,
     so edits are visible to readers within the freshness window.
 
+    **HEAD requests.** Every `GET` endpoint also responds to `HEAD` with the same status and
+    headers and an empty body (per RFC 7231). Useful for probing existence, cache validation, or
+    checking `Content-Length` without downloading the payload.
+
 servers:
   - url: http://localhost:4000
     description: Local sandbox
