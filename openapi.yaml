@@ -423,6 +423,137 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/v1/{collection}/by-key/{keyValue}:
+    get:
+      summary: Get a document by its natural key
+      description: |
+        Fetches a document by its configured natural key value (e.g. a `slug`). The collection
+        must have a `naturalKey` field set on its schema, otherwise this endpoint returns `400`.
+
+        The lookup uses a unique index on `(collection, natural_key)`, so it's as fast as a
+        by-ID lookup.
+      tags: [documents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: keyValue
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The natural-key value (URL-encoded if it contains reserved characters)
+          example: "about"
+        - name: label
+          in: query
+          description: Return state at this label instead of latest
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "400":
+          description: Collection has no `naturalKey` configured
+        "404":
+          description: No document with that natural key
+
+    put:
+      summary: Upsert a document by natural key (create if missing, update if present)
+      description: |
+        The headline operation. In a single transactional call, either creates a new document
+        with the given natural key or updates the existing one. Replaces the
+        list-then-find-then-put idiom that every ingestion script otherwise reinvents.
+
+        The request body should be a JSON document. If the body contains a value for the
+        natural-key field (e.g. `{"slug": "about", ...}`), it must match `{keyValue}` in the
+        URL — otherwise the request is rejected with `400` to surface the client-side bug
+        where the URL and the content disagree. If the body omits the key field, the server
+        fills it in automatically from the URL so the stored doc stays in sync with its
+        addressable identity.
+
+        Returns `201` on insert, `200` on update. The response body contains the document's
+        stable UUID `id` (which clients may or may not care about), the current version, and
+        the `naturalKey` value used.
+
+        Requires `write` access to `collection:{collection}`. Schema validation still applies.
+      tags: [documents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: keyValue
+          in: path
+          required: true
+          schema:
+            type: string
+          example: "about"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: The document data. May include the natural-key field (must match URL) or omit it (server fills it in).
+      responses:
+        "200":
+          description: Existing document updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "201":
+          description: New document created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentResponse"
+        "400":
+          description: Collection has no `naturalKey` configured, or URL key mismatches body field
+        "409":
+          description: Unique-key conflict (race under unusual isolation; should not happen in normal use)
+        "422":
+          $ref: "#/components/responses/SchemaValidationError"
+
+    delete:
+      summary: Delete a document by its natural key
+      description: |
+        Soft-deletes the document whose natural-key value matches `{keyValue}`. The key slot
+        is released on delete (the partial unique index excludes soft-deleted rows), so you
+        can recreate a document under the same key afterwards.
+      tags: [documents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: keyValue
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  deleted:
+                    type: boolean
+        "400":
+          description: Collection has no `naturalKey` configured
+        "404":
+          description: No document with that natural key
+
   /api/v1/{collection}/{id}/raw:
     get:
       summary: Download the binary content of an asset document
@@ -713,6 +844,15 @@ paths:
                       Field names to display as extra columns in the Admin UI document list.
                       e.g. `["date", "venue", "status"]`
                     example: ["date", "venue"]
+                  naturalKey:
+                    type: string
+                    nullable: true
+                    description: |
+                      The top-level field in document data whose value becomes the document's
+                      addressable natural key. Enables `/by-key/{value}` lookups and upsert-by-key.
+                      Example: `"slug"` — then `PUT /api/v1/pages/by-key/about` upserts the doc
+                      whose `data.slug === "about"`.
+                    example: "slug"
                   updatedAt:
                     type: string
                     format: date-time
@@ -747,7 +887,7 @@ paths:
           application/json:
             schema:
               oneOf:
-                - description: "Wrapper form — schema + optional displayName + optional listColumns + optional collectionType"
+                - description: "Wrapper form — schema + optional displayName + optional listColumns + optional naturalKey + optional collectionType"
                   type: object
                   properties:
                     schema:
@@ -765,11 +905,19 @@ paths:
                         type: string
                       description: Field names to show as columns in the Admin UI document list
                       example: ["date", "venue"]
+                    naturalKey:
+                      type: string
+                      nullable: true
+                      description: |
+                        The top-level data field whose value becomes each document's stable
+                        addressable identity. Enables the `/by-key/{value}` routes and the
+                        upsert-by-key operation. Pass an empty string or omit to disable.
+                      example: "slug"
                     collectionType:
                       type: string
                       enum: [json, binary]
                       description: "`json` (default) or `binary`"
-                - description: "Plain form — raw JSON Schema (displayName and collectionType unchanged)"
+                - description: "Plain form — raw JSON Schema (displayName, listColumns, naturalKey, and collectionType unchanged)"
                   type: object
       responses:
         "200":
@@ -795,6 +943,9 @@ paths:
                     nullable: true
                     items:
                       type: string
+                  naturalKey:
+                    type: string
+                    nullable: true
         "422":
           description: Invalid JSON Schema
 
