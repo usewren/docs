@@ -1442,6 +1442,110 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /api/v1/me:
+    get:
+      summary: Identity & scope of the calling principal
+      description: |
+        Returns the calling principal, the org this request is scoped to, the role of
+        the calling user in that org, and the permission rules that apply to this
+        principal. Designed as a self-check endpoint for agents and clients holding
+        an API key — call this once on startup to confirm you are authenticated,
+        understand your scope, and avoid 403-by-surprise on downstream requests.
+
+        Works with both Bearer API keys and browser session cookies. The response
+        shape is identical; only `authMethod`, `apiKey`, and `principal` differ.
+      tags: [auth]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      responses:
+        "200":
+          description: Principal, org, role, and applicable permission rules
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  principal:
+                    type: string
+                    description: Permission-rule principal for this caller
+                    example: "key:a3f4e5d2"
+                  authMethod:
+                    type: string
+                    enum: [api_key, session]
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      email:
+                        type: string
+                        format: email
+                  org:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      slug:
+                        type: string
+                        nullable: true
+                        example: "swift-river-peak"
+                      own:
+                        type: boolean
+                        description: True if the user owns this org
+                      role:
+                        type: string
+                        description: owner | admin | member | none
+                        example: "owner"
+                  apiKey:
+                    type: object
+                    nullable: true
+                    description: Present only when authMethod is "api_key"
+                    properties:
+                      id:
+                        type: string
+                      name:
+                        type: string
+                      prefix:
+                        type: string
+                        example: "wren_a3f4e5"
+                      lastUsedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                  permissions:
+                    type: array
+                    description: |
+                      Permission rules that apply to this principal, including public
+                      (`principal: "*"`) rules. Agents can use this to check what they
+                      can access before making a request.
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        principal:
+                          type: string
+                        resource:
+                          type: string
+                        access:
+                          type: string
+                        labelFilter:
+                          type: string
+                          nullable: true
+                        filterLang:
+                          type: string
+                          nullable: true
+                        filterExpr:
+                          type: string
+                          nullable: true
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /api/v1/org:
     get:
       summary: Get active org
