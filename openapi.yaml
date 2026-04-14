@@ -1494,12 +1494,13 @@ paths:
                         type: string
                         nullable: true
                         example: "swift-river-peak"
-                      own:
-                        type: boolean
-                        description: True if the user owns this org
                       role:
                         type: string
-                        description: owner | admin | member | none
+                        description: |
+                          Single source of truth for the caller's access in this org.
+                          `owner` — the caller's personal workspace or an org they own.
+                          `admin` / `member` / other — role from org_members.
+                          `none` — authenticated but not a member (rare).
                         example: "owner"
                   apiKey:
                     type: object
