@@ -51,6 +51,8 @@ tags:
     description: Invite collaborators to share your workspace
   - name: members
     description: Manage members of your org
+  - name: projects
+    description: Public project directory — lists all orgs with public permissions
   - name: system
     description: Health and metadata
   - name: discovery
@@ -1441,6 +1443,71 @@ paths:
           $ref: "#/components/responses/NotFound"
         "401":
           $ref: "#/components/responses/Unauthorized"
+
+  /api/v1/projects:
+    get:
+      summary: List public projects
+      description: |
+        Public, no authentication required. Returns every org that has at least one
+        `principal='*'` permission rule. For each tree, includes an `entryUrl` if the
+        tree has an `/index.html` path, indicating it serves a browsable site or app.
+        A human-friendly HTML view is available at `/projects`.
+      tags: [projects]
+      security: []
+      responses:
+        "200":
+          description: List of public projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                          description: Org owner's display name
+                        slug:
+                          type: string
+                          description: Org URL slug
+                        url:
+                          type: string
+                          format: uri
+                          description: Base URL for this org's public API
+                        collections:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                              access:
+                                type: string
+                              labelFilter:
+                                type: string
+                                nullable: true
+                              url:
+                                type: string
+                                format: uri
+                        trees:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              name:
+                                type: string
+                              url:
+                                type: string
+                                format: uri
+                                description: Full tree snapshot URL
+                              entryUrl:
+                                type: string
+                                format: uri
+                                nullable: true
+                                description: URL to /index.html if the tree serves a browsable site, null otherwise
 
   /api/v1/me:
     get:
