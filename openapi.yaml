@@ -1190,6 +1190,18 @@ paths:
           schema:
             type: string
           example: /site/en/about
+        - name: label
+          in: query
+          required: false
+          schema:
+            type: string
+          description: |
+            Return the document at the version pinned to this label instead of the
+            current version. When a permission rule has a `labelFilter`, it is applied
+            automatically — this parameter overrides it for authenticated callers.
+            Useful for preview/published workflows: deploy new versions, label them
+            "preview", then promote to "published" when ready.
+          example: published
       responses:
         "200":
           description: Node found
