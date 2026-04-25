@@ -1171,9 +1171,10 @@ paths:
       description: |
         Returns the document assigned at `path` and its immediate children.
         Supports content negotiation for binary assets: when the resolved document is a binary
-        asset (`_binary: true`), sending `Accept: text/html` or any non-JSON type streams the
-        raw file bytes (same as `/raw`). `Accept: application/json` or no Accept header always
-        returns the JSON envelope.
+        asset (`_binary: true`), the default response is the raw file bytes with the stored
+        `Content-Type` — matching what browsers expect for `<script>`, `<link>`, `<img>`, and
+        ESM imports. To get the JSON metadata envelope instead, send `Accept: application/json`
+        explicitly.
       tags: [documents]
       security:
         - cookieAuth: []
@@ -2259,14 +2260,11 @@ paths:
         required. Append `?full=true` to return the entire subtree as a nested object.
 
         **Content negotiation for binary assets:** when the resolved document is a binary asset
-        (`_binary: true`) the response varies by `Accept` header:
+        (`_binary: true`), the default response is the raw file bytes with the stored
+        `Content-Type`. This means `<script src="…">`, `<link href="…">`, `<img src="…">`,
+        ESM `import`, `curl`, and `fetch()` all work out of the box — no special headers needed.
 
-        - `Accept: application/json` — always returns the JSON metadata envelope.
-        - `Accept: text/html`, `image/*`, or any other non-JSON type (e.g. a browser request)
-          — streams the raw file bytes with the stored `Content-Type`, identical to the `/raw`
-          endpoint. This allows URLs like `/orgs/acme/tree/site/index.html` to be opened
-          directly in a browser.
-        - No `Accept` header or `Accept: */*` only — returns JSON (backwards-compatible default).
+        To get the JSON metadata envelope instead, send `Accept: application/json` explicitly.
       tags: [trees]
       security: {}
       parameters:
