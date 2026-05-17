@@ -41,6 +41,10 @@ tags:
     description: Compare versions
   - name: schemas
     description: JSON Schema enforcement per collection
+  - name: query
+    description: Filter, project, and aggregate documents — replaces hand-built index docs
+  - name: materialized
+    description: Named, persisted query results that auto-refresh on write
   - name: assets
     description: Binary asset upload, versioning and download for collections with `collectionType=binary`
   - name: keys
@@ -1080,6 +1084,151 @@ paths:
           description: Binary collection — validation not applicable
         "422":
           description: The proposed schema is not a valid JSON Schema
+
+  /api/v1/{collection}/_query:
+    post:
+      summary: Query documents with filter, projection, and aggregation
+      description: |
+        A structured query endpoint that replaces hand-built index documents. Supports
+        SQL-level filtering, field projection (return only selected fields), and aggregation
+        with array unnest. Respects permission labelFilter and filterExpr.
+      tags: [query]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                where:
+                  type: string
+                  description: Filter expression (e.g. "category:news", "count>5")
+                select:
+                  type: array
+                  items:
+                    type: string
+                  description: Field paths to return (projection)
+                aggregate:
+                  type: object
+                  properties:
+                    groupBy:
+                      type: array
+                      items:
+                        type: string
+                      description: Group by field paths or $documentId, $path, $collection
+                    metrics:
+                      type: object
+                      additionalProperties:
+                        type: object
+                        description: "Metric definition: { count|countDistinct|sum|min|max|avg: 'path' }"
+                label:
+                  type: string
+                  description: Read at this label version
+                limit:
+                  type: integer
+                  default: 100
+                  maximum: 1000
+                cursor:
+                  type: string
+                  description: Pagination cursor from previous response
+      responses:
+        "200":
+          description: Query results (items for projection, rows for aggregation)
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "408":
+          description: Query timed out (max 5 seconds)
+
+  /api/v1/{collection}/_materialized:
+    get:
+      summary: List materialized queries
+      tags: [materialized]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      responses:
+        "200":
+          description: List of materialized queries for this collection
+
+  /api/v1/{collection}/_materialized/{name}:
+    get:
+      summary: Read materialized query result
+      description: Returns the latest result document for this materialized query.
+      tags: [materialized]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Materialized query result
+        "404":
+          description: Materialized query not found or no result yet
+    put:
+      summary: Create or update a materialized query
+      description: |
+        Stores a query definition that auto-refreshes on every write to the source
+        collection. The result is stored as a versioned document.
+      tags: [materialized]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                query:
+                  type: object
+                  description: Query body (same shape as POST /_query)
+                refreshOn:
+                  type: string
+                  enum: [write, manual]
+                  default: write
+      responses:
+        "200":
+          description: Materialized query saved and initial refresh triggered
+    delete:
+      summary: Delete a materialized query
+      tags: [materialized]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deleted
+        "404":
+          description: Not found
 
   /api/v1/tree:
     get:
