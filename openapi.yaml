@@ -1086,12 +1086,60 @@ paths:
           description: The proposed schema is not a valid JSON Schema
 
   /api/v1/{collection}/_query:
+    get:
+      summary: Query documents (cacheable GET form)
+      description: |
+        GET form of the query endpoint — CDN and browser cacheable. Two modes:
+
+        - **Individual params:** `?select=a,b&where=x:y&limit=10` for simple projection + filter.
+        - **Encoded JSON:** `?q=<base64url-encoded JSON>` for complex queries including aggregation.
+
+        The anonymous org-scoped variant (`/api/v1/orgs/{slug}/{collection}/_query`) works
+        identically when a `principal='*'` read rule exists on the collection.
+      tags: [query]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - name: select
+          in: query
+          schema:
+            type: string
+          description: Comma-separated field paths for projection
+        - name: where
+          in: query
+          schema:
+            type: string
+          description: Filter expression (e.g. "category:news")
+        - name: q
+          in: query
+          schema:
+            type: string
+          description: Full query body as base64url-encoded JSON (for aggregation)
+        - name: label
+          in: query
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: cursor
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Query results
     post:
       summary: Query documents with filter, projection, and aggregation
       description: |
-        A structured query endpoint that replaces hand-built index documents. Supports
-        SQL-level filtering, field projection (return only selected fields), and aggregation
-        with array unnest. Respects permission labelFilter and filterExpr.
+        POST form of the query endpoint. Supports the full query body including aggregation.
+        Not CDN-cacheable (use GET for cacheable queries).
+
+        The anonymous org-scoped variant (`/api/v1/orgs/{slug}/{collection}/_query`) works
+        identically when a `principal='*'` read rule exists on the collection.
       tags: [query]
       security:
         - bearerAuth: []
