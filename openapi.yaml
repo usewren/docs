@@ -7,13 +7,22 @@ info:
     Every mutation creates a version. Versions can be labeled (e.g. `published`, `draft`).
     All responses are streamed. Security and multi-tenancy are built in.
 
-    **Clean public URLs:** `/orgs/{slug}/...` is a short alias for `/api/v1/orgs/{slug}/...`,
+    **Private vs public URLs.**
+    - Private API: `/api/v1/{collection}…`, `/api/v1/tree/…`, `/api/v1/me`, … — requires
+      `Authorization: Bearer wren_…` or a session cookie; the org comes from the credentials,
+      never from the URL. There are no unversioned routes.
+    - Public, read-only: `/api/v1/orgs/{slug}/…` — no auth; only returns what a
+      `principal: "*"` read rule allows (403 otherwise); auth headers are ignored; anything other
+      than GET (and `POST …/_query`) returns 405.
+
+    **Clean public URLs:** `/orgs/{slug}/...` is a GET-only short alias for `/api/v1/orgs/{slug}/...`,
     intended for browser-facing URLs. For example, `/orgs/acme/tree/site/index.html` opens
     directly in a browser without needing to know the `/api/v1` prefix.
 
     **Caching.** Public read endpoints emit `Cache-Control: public, max-age=60,
     stale-while-revalidate=86400` — browsers and CDNs can serve responses for a minute without
     checking, and may serve stale responses for up to a day while revalidating in the background.
+    Error responses (4xx/5xx) on public routes are `Cache-Control: no-store`.
     Tree and raw-asset responses also emit `Vary: Accept` so content-negotiated URLs (the ones
     that can return either JSON metadata or raw bytes) are cached separately per Accept header —
     a JSON probe cannot poison the HTML response for the same URL. WREN dispatches an explicit
@@ -2322,7 +2331,7 @@ paths:
               properties:
                 principal:
                   type: string
-                  description: "`member:<userId>` or `key:<keyId>`"
+                  description: "`member:<userId>`, `key:<keyId>`, or `*` (anyone, including anonymous public reads)"
                   example: "member:abc123"
                 resource:
                   type: string
@@ -2914,7 +2923,7 @@ components:
           type: string
         principal:
           type: string
-          description: "`member:<userId>` or `key:<keyId>`"
+          description: "`member:<userId>`, `key:<keyId>`, or `*` (anyone, including anonymous public reads)"
         resource:
           type: string
           description: "`*` | `collection:<name>` | `collection:*` | `tree:<name>` | `tree:*`"
