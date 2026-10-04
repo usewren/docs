@@ -2738,6 +2738,42 @@ paths:
         "404":
           description: Org slug not found
 
+  /api/v1/_events:
+    get:
+      summary: Live changes (Server-Sent Events)
+      description: |
+        A `text/event-stream` of committed changes in your org that you can read: `document.created|updated|deleted`,
+        `label.set|removed`, `tree.assigned|removed`, `schema.updated`, plus `ready` and `reset`. Each `data:` line is
+        JSON with ids, versions and label names, never document data. Resume with `Last-Event-ID` (last 1,000 events
+        per org); `reset` means re-read. A `: ping` comment every 25 s.
+      tags: [discovery]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - { name: collections, in: query, schema: { type: string }, description: "Comma-separated collections" }
+        - { name: trees, in: query, schema: { type: string }, description: "Comma-separated trees (label events of documents mounted there)" }
+        - { name: Last-Event-ID, in: header, schema: { type: string }, description: "Resume after this event id" }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "401": { description: No key or session }
+        "503": { description: Too many open streams (see Retry-After) }
+  /api/v1/orgs/{slug}/_events:
+    get:
+      summary: Public live changes (Server-Sent Events)
+      description: |
+        Same stream for anyone, following the org's public rules: with `labelFilter` only moves of that label
+        (drafts stay invisible), without one every event. No auth; CORS `*`. Also at `/orgs/{slug}/_events`.
+      tags: [discovery]
+      security:
+        - {}
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: collections, in: query, schema: { type: string } }
+        - { name: trees, in: query, schema: { type: string } }
+      responses:
+        "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
+        "404": { description: Unknown org }
 components:
   securitySchemes:
     cookieAuth:
