@@ -1371,6 +1371,58 @@ paths:
         "401":
           description: Unauthorized
 
+  /api/v1/tree/{treeName}/_promote:
+    post:
+      summary: Atomically move a label on every document in a tree
+      description: |
+        For every document assigned in the tree, points `label` (default `published`) at the
+        version that carries `from`, or at the current version if `from` is omitted. Documents
+        without the `from` label are left alone. All label changes happen in one transaction:
+        readers never see a half-promoted tree, and if any collection is not writable nothing
+        changes (403). `wren promote` uses this endpoint.
+      tags: [documents]
+      security:
+        - bearerAuth: []
+        - cookieAuth: []
+      parameters:
+        - name: treeName
+          in: path
+          required: true
+          schema:
+            type: string
+          example: mysite
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label: { type: string, default: published }
+                from:  { type: string, example: preview }
+      responses:
+        "200":
+          description: Labels moved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tree: { type: string }
+                  label: { type: string }
+                  from: { type: string, nullable: true }
+                  promoted:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        path: { type: string }
+                        documentId: { type: string }
+                        collection: { type: string }
+                        version: { type: integer }
+        "403": { description: No write access to the tree or to one of its collections; nothing changed }
+        "404": { description: Tree is empty, or no document carries the `from` label }
+
   /api/v1/tree/{treeName}/{path}:
     get:
       summary: Get document at path and list immediate children in a named tree
@@ -1914,7 +1966,7 @@ paths:
     put:
       summary: Set org slug
       description: |
-        Set a custom URL slug for the authenticated user's own organisation. Only the org owner
+        Set a custom URL slug for the authenticated user's own organization. Only the org owner
         can change their slug. Slugs must be 3–40 characters: lowercase alphanumeric and hyphens,
         no leading/trailing hyphens.
       tags: [org]
@@ -2636,7 +2688,7 @@ paths:
     get:
       summary: Instance owner public data context (llms.txt)
       description: |
-        Returns the public data context for the instance owner's organisation (the
+        Returns the public data context for the instance owner's organization (the
         earliest-registered user). Follows the well-known URI convention (RFC 8615).
         Same format as /api/v1/orgs/{slug}/llms.txt.
       tags: [discovery]
@@ -2652,7 +2704,7 @@ paths:
     get:
       summary: Org data context (llms.txt) — context-aware
       description: |
-        Returns a plain-text Markdown document describing the organisation's collections,
+        Returns a plain-text Markdown document describing the organization's collections,
         schemas, labels, sample documents, and tree structure.
 
         **Context-aware:** authentication is optional.
