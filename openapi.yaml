@@ -70,6 +70,12 @@ tags:
     description: Health and metadata
   - name: discovery
     description: LLM and crawler discovery endpoints
+  - name: groups
+    description: Groups of members; rules can name a group
+  - name: webhooks
+    description: Batched, signed HTTP notifications of changes
+  - name: agents
+    description: MCP server, MCP sign-in (OAuth) and connected apps
 
 paths:
   /api/auth/sign-up/email:
@@ -1421,7 +1427,7 @@ paths:
                         collection: { type: string }
                         version: { type: integer }
         "403": { description: No write access to the tree or to one of its collections; nothing changed }
-        "404": { description: Tree is empty, or no document carries the `from` label }
+        "404": { description: "Tree is empty, or no document carries the `from` label" }
 
   /api/v1/tree/{treeName}/{path}:
     get:
@@ -2524,7 +2530,7 @@ paths:
 
         To get the JSON metadata envelope instead, send `Accept: application/json` explicitly.
       tags: [trees]
-      security: {}
+      security: []
       parameters:
         - name: slug
           in: path
@@ -2598,7 +2604,7 @@ paths:
                 properties:
                   items:
                     type: array
-                    items: { $ref: "#/components/schemas/Document" }
+                    items: { $ref: "#/components/schemas/DocumentResponse" }
                   total:
                     type: integer
         "403":
@@ -2634,7 +2640,7 @@ paths:
           description: Document
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/Document" }
+              schema: { $ref: "#/components/schemas/DocumentResponse" }
         "403":
           $ref: "#/components/responses/Forbidden"
         "404":
@@ -2774,6 +2780,429 @@ paths:
       responses:
         "200": { description: Event stream, content: { text/event-stream: { schema: { type: string } } } }
         "404": { description: Unknown org }
+  /api/v1/groups:
+    get:
+      summary: List groups
+      description: |
+        The org's groups with their members and rules. Creates the default *Editors* (write everything) and
+        *Viewers* (read everything) groups the first time. Org owner or admin only.
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Groups
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  groups:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        name: { type: string }
+                        description: { type: string, nullable: true }
+                        members: { type: array, items: { type: object, properties: { userId: { type: string }, name: { type: string }, email: { type: string } } } }
+                        rules: { type: array, items: { type: object, properties: { id: { type: string }, resource: { type: string }, access: { type: string }, labelFilter: { type: string, nullable: true } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { description: Not an org owner or admin }
+    post:
+      summary: Create a group
+      description: Optionally with `access` on everything (`*`), which creates the group's rule.
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string }
+                description: { type: string }
+                access: { type: string, enum: [none, read, write, admin] }
+      responses:
+        "201": { description: Created, content: { application/json: { schema: { type: object, properties: { id: { type: string }, name: { type: string }, description: { type: string, nullable: true } } } } } }
+        "400": { description: Missing name or invalid access }
+        "409": { description: A group with that name already exists }
+  /api/v1/groups/{groupId}:
+    parameters:
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+    put:
+      summary: Rename or describe a group
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { name: { type: string }, description: { type: string } } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { type: object, properties: { id: { type: string }, updated: { type: boolean } } } } } }
+        "404": { description: Not found }
+        "409": { description: A group with that name already exists }
+    delete:
+      summary: Delete a group
+      description: Its rules and memberships go with it.
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { type: object, properties: { id: { type: string }, deleted: { type: boolean } } } } } }
+        "404": { description: Not found }
+  /api/v1/groups/{groupId}/members/{userId}:
+    parameters:
+      - { name: groupId, in: path, required: true, schema: { type: string } }
+      - { name: userId, in: path, required: true, schema: { type: string } }
+    put:
+      summary: Add a member to a group
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Added, content: { application/json: { schema: { type: object, properties: { groupId: { type: string }, userId: { type: string }, member: { type: boolean } } } } } }
+        "400": { description: Not a member of this org }
+        "404": { description: Group not found }
+    delete:
+      summary: Remove a member from a group
+      tags: [groups]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Removed, content: { application/json: { schema: { type: object, properties: { groupId: { type: string }, userId: { type: string }, member: { type: boolean } } } } } }
+        "404": { description: Group not found }
+  /api/v1/members/{memberId}/impersonate:
+    post:
+      summary: View the org as a member (impersonation)
+      description: |
+        An org owner or admin, in a signed-in browser session (not an API key), acts as this member inside this
+        org until ended or expired. Changes made meanwhile record `impersonated_by` on versions, labels and paths,
+        and in the access log. Management routes are blocked while impersonating. The org owner can't be impersonated.
+      tags: [members]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: memberId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Impersonating
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  impersonationId: { type: string }
+                  as: { type: object, properties: { userId: { type: string }, name: { type: string }, email: { type: string } } }
+                  orgId: { type: string }
+                  expiresAt: { type: string, format: date-time }
+        "400": { description: You can't impersonate yourself }
+        "403": { description: "Not an admin, an API key, or the target is the owner" }
+        "404": { description: Not a member of this org }
+  /api/v1/impersonation:
+    get:
+      summary: Current impersonation
+      tags: [members]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "`impersonating` is null, or who is acting as whom until when", content: { application/json: { schema: { type: object, properties: { impersonating: { type: object, nullable: true } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    delete:
+      summary: End impersonation
+      tags: [members]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200": { description: "`ended: true`, or `ended: false` when not impersonating", content: { application/json: { schema: { type: object, properties: { ended: { type: boolean }, reason: { type: string } } } } } }
+  /api/v1/webhooks:
+    get:
+      summary: List webhooks
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Webhooks (secrets are never returned)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  webhooks:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        url: { type: string }
+                        events: { type: array, items: { type: string } }
+                        enabled: { type: boolean }
+                        consecFailures: { type: integer }
+                        createdAt: { type: string, format: date-time }
+                        updatedAt: { type: string, format: date-time }
+    post:
+      summary: Create a webhook
+      description: |
+        Batched, HMAC-signed (`X-Wren-Signature`) POSTs of change events. The URL must be http(s) and resolve to a
+        public address (private, loopback, link-local and metadata addresses are refused; `WREN_WEBHOOK_ALLOW_HOSTS`
+        allows internal host names). The signing secret is returned once.
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string }
+                events:
+                  type: array
+                  description: Event types to send; empty = all
+                  items: { type: string, enum: [document.created, document.updated, document.deleted, label.set, label.removed, tree.assigned, tree.removed, schema.updated] }
+      responses:
+        "201": { description: "Created, with the secret (shown once)", content: { application/json: { schema: { type: object, properties: { id: { type: string }, url: { type: string }, events: { type: array, items: { type: string } }, secret: { type: string }, enabled: { type: boolean } } } } } }
+        "400": { description: "Missing or refused URL, or too many webhooks" }
+  /api/v1/webhooks/{webhookId}:
+    parameters:
+      - { name: webhookId, in: path, required: true, schema: { type: string } }
+    put:
+      summary: Update a webhook
+      description: Change the URL (same address rules), the event types, or re-enable it after auto-disable.
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { url: { type: string }, events: { type: array, items: { type: string } }, enabled: { type: boolean } } } } }
+      responses:
+        "200": { description: Updated, content: { application/json: { schema: { type: object, properties: { id: { type: string }, updated: { type: boolean } } } } } }
+        "400": { description: Refused URL }
+        "404": { description: Not found }
+    delete:
+      summary: Delete a webhook
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Deleted, content: { application/json: { schema: { type: object, properties: { id: { type: string }, deleted: { type: boolean } } } } } }
+        "404": { description: Not found }
+  /api/v1/webhooks/{webhookId}/deliveries:
+    get:
+      summary: Delivery log
+      description: Each attempt with its status code or error (including addresses refused before sending).
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: webhookId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Deliveries, content: { application/json: { schema: { type: object, properties: { deliveries: { type: array, items: { type: object, properties: { batchKey: { type: string }, eventCount: { type: integer }, attempt: { type: integer }, statusCode: { type: integer, nullable: true }, error: { type: string, nullable: true }, deliveredAt: { type: string, format: date-time } } } } } } } } }
+        "404": { description: Not found }
+  /api/v1/webhooks/{webhookId}/replay:
+    post:
+      summary: Replay events
+      description: Re-deliver the org's events since a time (kept 7 days) to this webhook, as one batch.
+      tags: [webhooks]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: webhookId, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [since], properties: { since: { type: string, format: date-time }, until: { type: string, format: date-time } } } } }
+      responses:
+        "200": { description: Replayed, content: { application/json: { schema: { type: object, properties: { replayed: { type: integer }, batchKey: { type: string } } } } } }
+        "400": { description: Missing since }
+        "404": { description: Not found }
+  /api/v1/connected-apps:
+    get:
+      summary: Connected apps (MCP sign-ins)
+      description: AI apps you allowed through `/mcp/login`, across all your orgs, with the org each works in. Browser session only.
+      tags: [agents]
+      security: [{ cookieAuth: [] }]
+      responses:
+        "200":
+          description: Apps
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apps:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        clientId: { type: string }
+                        name: { type: string }
+                        icon: { type: string, nullable: true }
+                        redirectHosts: { type: array, items: { type: string } }
+                        org: { type: object, nullable: true, properties: { id: { type: string }, name: { type: string }, slug: { type: string } } }
+                        connectedAt: { type: string, format: date-time }
+                        lastRenewedAt: { type: string, format: date-time }
+                        expiresAt: { type: string, format: date-time }
+        "403": { description: API keys and impersonating admins can't manage connected apps }
+  /api/v1/connected-apps/{clientId}:
+    delete:
+      summary: Revoke a connected app
+      description: Its tokens stop working immediately; its next sign-in shows the consent page again.
+      tags: [agents]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: clientId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Revoked, content: { application/json: { schema: { type: object, properties: { clientId: { type: string }, revoked: { type: boolean }, tokensRevoked: { type: integer } } } } } }
+        "404": { description: No connection to that app }
+  /api/v1/landing-stats:
+    get:
+      summary: Landing-page experiment results
+      description: Visitors, views, first Admin UI opens and sign-ups per landing variant. Server operators (`WREN_OPERATORS`) in their own session only.
+      tags: [system]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: days, in: query, schema: { type: integer, default: 30, minimum: 1, maximum: 365 } }
+      responses:
+        "200": { description: Counts per variant, content: { application/json: { schema: { type: object, properties: { days: { type: integer }, since: { type: string, nullable: true }, variants: { type: array, items: { type: object } } } } } } }
+        "403": { description: Not a server operator }
+  /mcp:
+    post:
+      summary: MCP server (Streamable HTTP, stateless JSON-RPC)
+      description: |
+        With an API key: 12 tools in the key's org (query, read, write to a `preview` label, diff, atomic promote)
+        plus the public tools. Without a key: read-only `list_public` and `public_*` tools over every org's public
+        data. `?readonly=1` exposes only read tools.
+      tags: [agents]
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - { name: readonly, in: query, schema: { type: string, enum: ["1"] } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object, description: JSON-RPC 2.0 request } } } }
+      responses:
+        "200": { description: JSON-RPC response, content: { application/json: { schema: { type: object } } } }
+  /orgs/{slug}/mcp:
+    post:
+      summary: Org-bound MCP endpoint
+      description: For custom domains. Without a key public and read-only (`?tree=` scopes it to one site, `&collections=a,b` adds collections); with a key full tools, only for that org's keys.
+      tags: [agents]
+      security: [{}, { bearerAuth: [] }]
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - { name: tree, in: query, schema: { type: string } }
+        - { name: collections, in: query, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: JSON-RPC response, content: { application/json: { schema: { type: object } } } }
+  /mcp/login:
+    post:
+      summary: MCP with "Sign in with WREN" (OAuth)
+      description: Same tools as `/mcp` with a key, acting as the signed-in user in the org they chose on the consent page. Without a token, 401 with `WWW-Authenticate` pointing at the protected-resource metadata. Tokens are MCP-only.
+      tags: [agents]
+      security: [{ bearerAuth: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        "200": { description: JSON-RPC response, content: { application/json: { schema: { type: object } } } }
+        "401": { description: Missing or invalid token }
+  /mcp/consent:
+    get:
+      summary: Consent page (HTML)
+      description: Where the user sees which app is asking, picks the org and allows or denies. Always shown.
+      tags: [agents]
+      responses:
+        "200": { description: HTML page, content: { text/html: { schema: { type: string } } } }
+  /mcp/consent/info:
+    get:
+      summary: Consent details
+      description: The asking client and the orgs the signed-in user can choose.
+      tags: [agents]
+      security: [{ cookieAuth: [] }]
+      parameters:
+        - { name: client_id, in: query, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Client and orgs, content: { application/json: { schema: { type: object, properties: { client: { type: object }, orgs: { type: array, items: { type: object } } } } } } }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /mcp/consent/approve:
+    post:
+      summary: Allow or deny an MCP client
+      tags: [agents]
+      security: [{ cookieAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [consent_code, client_id], properties: { consent_code: { type: string }, client_id: { type: string }, org_id: { type: string }, accept: { type: boolean } } } } }
+      responses:
+        "200": { description: "`redirectURI` to send the user back to the app", content: { application/json: { schema: { type: object, properties: { redirectURI: { type: string } } } } } }
+        "400": { description: "Invalid code, someone else's authorization, or an org you don't belong to" }
+  /api/auth/mcp/authorize:
+    get:
+      summary: OAuth authorization endpoint (MCP clients)
+      description: Authorization code flow with PKCE (S256). WREN always adds `prompt=consent`, so the consent page is never skipped.
+      tags: [agents]
+      responses:
+        "302": { description: Redirect to sign-in or the consent page }
+  /api/auth/mcp/token:
+    post:
+      summary: OAuth token endpoint (MCP clients)
+      description: "`authorization_code` (with `code_verifier`) and `refresh_token` grants. Access tokens last 1 hour, refresh tokens 30 days."
+      tags: [agents]
+      requestBody: { required: true, content: { application/x-www-form-urlencoded: { schema: { type: object } } } }
+      responses:
+        "200": { description: Tokens, content: { application/json: { schema: { type: object } } } }
+  /api/auth/mcp/register:
+    post:
+      summary: OAuth dynamic client registration (MCP clients)
+      tags: [agents]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, properties: { client_name: { type: string }, redirect_uris: { type: array, items: { type: string } } } } } } }
+      responses:
+        "201": { description: Registered client (`client_id`), content: { application/json: { schema: { type: object } } } }
+  /.well-known/oauth-authorization-server:
+    get:
+      summary: OAuth authorization server metadata (RFC 8414)
+      tags: [agents]
+      responses:
+        "200": { description: Metadata, content: { application/json: { schema: { type: object } } } }
+  /.well-known/oauth-authorization-server/api/auth:
+    get:
+      summary: OAuth authorization server metadata (issuer path form)
+      tags: [agents]
+      responses:
+        "200": { description: Metadata, content: { application/json: { schema: { type: object } } } }
+  /.well-known/oauth-protected-resource:
+    get:
+      summary: OAuth protected resource metadata (RFC 9728)
+      tags: [agents]
+      responses:
+        "200": { description: Metadata, content: { application/json: { schema: { type: object } } } }
+  /.well-known/oauth-protected-resource/mcp/login:
+    get:
+      summary: Protected resource metadata for /mcp/login
+      tags: [agents]
+      responses:
+        "200": { description: Metadata, content: { application/json: { schema: { type: object } } } }
+  /llms.txt:
+    get:
+      summary: Site summary for LLMs
+      tags: [discovery]
+      responses:
+        "200": { description: Markdown, content: { text/plain: { schema: { type: string } } } }
+  /llms-full.txt:
+    get:
+      summary: Full API reference for LLMs
+      tags: [discovery]
+      responses:
+        "200": { description: Markdown, content: { text/plain: { schema: { type: string } } } }
+  /robots.txt:
+    get:
+      summary: Crawler rules
+      tags: [discovery]
+      responses:
+        "200": { description: robots.txt, content: { text/plain: { schema: { type: string } } } }
+  /sitemap.xml:
+    get:
+      summary: Sitemap
+      tags: [discovery]
+      responses:
+        "200": { description: XML sitemap, content: { application/xml: { schema: { type: string } } } }
+  /openapi.json:
+    get:
+      summary: This OpenAPI document
+      tags: [discovery]
+      responses:
+        "200": { description: OpenAPI 3.1, content: { application/json: { schema: { type: object } } } }
+  /wren.js:
+    get:
+      summary: wren.js web components
+      description: Client-side data binding for any HTML page. Also at `/orgs/{slug}/wren.js`.
+      tags: [discovery]
+      responses:
+        "200": { description: JavaScript, content: { application/javascript: { schema: { type: string } } } }
 components:
   securitySchemes:
     cookieAuth:
@@ -3038,6 +3467,28 @@ components:
           format: date-time
 
   responses:
+    Unauthorized:
+      description: No valid API key or session
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+
+    BadRequest:
+      description: Invalid request (missing or malformed fields)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: name is required
+
     NotFound:
       description: Document not found
       content:
