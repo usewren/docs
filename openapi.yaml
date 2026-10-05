@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: WREN
-  version: 0.9.0
+  version: 0.10.0
   description: |
     WREN is a self-hosted versioned JSON storage service.
     Every mutation creates a version. Versions can be labeled (e.g. `published`, `draft`).
@@ -396,6 +396,8 @@ paths:
       security:
         - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/ifMatch"
+        - $ref: "#/components/parameters/ifVersion"
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
       requestBody:
@@ -414,6 +416,8 @@ paths:
                   format: binary
                   description: The new binary file to store as the next version
       responses:
+        "412":
+          $ref: "#/components/responses/VersionMismatch"
         "200":
           description: Document updated / new asset version stored
           content:
@@ -433,9 +437,13 @@ paths:
       security:
         - cookieAuth: []
       parameters:
+        - $ref: "#/components/parameters/ifMatch"
+        - $ref: "#/components/parameters/ifVersion"
         - $ref: "#/components/parameters/collection"
         - $ref: "#/components/parameters/id"
       responses:
+        "412":
+          $ref: "#/components/responses/VersionMismatch"
         "200":
           description: Document deleted
           content:
@@ -518,6 +526,8 @@ paths:
         - cookieAuth: []
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ifMatch"
+        - $ref: "#/components/parameters/ifVersion"
         - $ref: "#/components/parameters/collection"
         - name: keyValue
           in: path
@@ -533,6 +543,8 @@ paths:
               type: object
               description: The document data. May include the natural-key field (must match URL) or omit it (server fills it in).
       responses:
+        "412":
+          $ref: "#/components/responses/VersionMismatch"
         "200":
           description: Existing document updated
           content:
@@ -563,6 +575,8 @@ paths:
         - cookieAuth: []
         - bearerAuth: []
       parameters:
+        - $ref: "#/components/parameters/ifMatch"
+        - $ref: "#/components/parameters/ifVersion"
         - $ref: "#/components/parameters/collection"
         - name: keyValue
           in: path
@@ -570,6 +584,8 @@ paths:
           schema:
             type: string
       responses:
+        "412":
+          $ref: "#/components/responses/VersionMismatch"
         "200":
           description: Document deleted
           content:
@@ -1008,6 +1024,23 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+    patch:
+      summary: Change some fields of a collection's schema
+      description: |
+        Only the fields sent change (schema, displayName, collectionType, listColumns, naturalKey,
+        indexes); null clears one. PUT replaces the whole definition, so a script that PUTs its schema
+        on every run would drop a naturalKey or index added later — PATCH doesn't.
+      tags: [schemas]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, additionalProperties: false, properties: { schema: { type: object }, displayName: { type: string, nullable: true }, collectionType: { type: string, enum: [json, binary] }, listColumns: { type: array, nullable: true, items: { type: string } }, naturalKey: { type: string, nullable: true }, indexes: { type: array, items: { type: object } } } } } }
+      responses:
+        "200": { description: The whole schema after the change, content: { application/json: { schema: { type: object } } } }
+        "400": { description: Unknown field }
+        "409": { description: Natural key clashes between existing documents }
   /api/v1/{collection}/_schema/validate:
     get:
       summary: Dry-run the current schema against every existing document
@@ -3359,6 +3392,20 @@ paths:
       responses:
         "200": { description: The file, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
         "404": { description: No file with that name }
+  /api/v1/orgs/{slug}/{collection}/by-key/{keyValue}/raw:
+    get:
+      summary: Public file by its name
+      description: A file in a public file collection with naturalKey "filename". Also at /orgs/{slug}/{collection}/by-key/{keyValue}/raw. The rule's label filter applies.
+      tags: [discovery]
+      security: [{}]
+      parameters:
+        - { name: slug, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/collection"
+        - { name: keyValue, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The file, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "403": { description: Not public }
+        "404": { description: No file with that name }
 components:
   securitySchemes:
     cookieAuth:
@@ -3371,6 +3418,19 @@ components:
       description: "API key issued via POST /api/v1/keys. Format — Authorization: Bearer wren_\u2026"
 
   parameters:
+    ifMatch:
+      name: If-Match
+      in: header
+      description: |
+        Conditional write: apply only if the document is still at this version (the ETag of a read,
+        e.g. `"3"`). `0` = only if it doesn't exist yet (create-only, by key); `*` = only if it exists.
+        Same as `?ifVersion=<n>`. On mismatch: 412 with `currentVersion`.
+      schema: { type: string }
+    ifVersion:
+      name: ifVersion
+      in: query
+      description: Same as the If-Match header.
+      schema: { type: integer, minimum: 0 }
     collection:
       name: collection
       in: path
@@ -3658,6 +3718,16 @@ components:
           format: date-time
 
   responses:
+    VersionMismatch:
+      description: The document is not at the expected version (If-Match / ifVersion)
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error: { type: string, example: Version mismatch }
+              details: { type: string }
+              currentVersion: { type: integer, description: "0 when the document doesn't exist" }
     Unauthorized:
       description: No valid API key or session
       content:
