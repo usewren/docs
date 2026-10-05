@@ -76,6 +76,8 @@ tags:
     description: Batched, signed HTTP notifications of changes
   - name: agents
     description: MCP server, MCP sign-in (OAuth) and connected apps
+  - name: retention
+    description: Policies that remove old versions (current and labeled versions are always kept)
 
 paths:
   /api/auth/sign-up/email:
@@ -3203,6 +3205,75 @@ paths:
       tags: [discovery]
       responses:
         "200": { description: JavaScript, content: { application/javascript: { schema: { type: string } } } }
+  /api/v1/retention:
+    get:
+      summary: Retention policies and recent runs
+      description: |
+        The org default (`*`), each collection's own policy, and the last 20 runs that removed versions.
+        A document's current version and every version a label points to are always kept; of the rest, a
+        version is removed when any rule of its collection's policy says so. Org owner or admin only.
+      tags: [retention]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200":
+          description: Policies and runs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  default: { $ref: "#/components/schemas/RetentionPolicy" }
+                  collections: { type: array, items: { $ref: "#/components/schemas/RetentionPolicy" } }
+                  runs: { type: array, items: { type: object, properties: { collection: { type: string }, versionsRemoved: { type: integer }, bytesFreed: { type: integer }, triggeredBy: { type: string }, ranAt: { type: string, format: date-time } } } }
+        "403": { description: Not an org owner or admin }
+  /api/v1/retention/{collection}:
+    parameters:
+      - { name: collection, in: path, required: true, schema: { type: string }, description: "A collection name, or * for the org default" }
+    put:
+      summary: Set a retention policy
+      description: |
+        Replaces the policy. Rules combine: a version is removed if any of them says so. A policy with no rule
+        keeps everything, which exempts a collection from the org default. Internal collections (starting
+        with `_`) can't have a policy.
+      tags: [retention]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RetentionRules" } } }
+      responses:
+        "200": { description: Saved, content: { application/json: { schema: { $ref: "#/components/schemas/RetentionPolicy" } } } }
+        "400": { description: Invalid rule or collection name }
+    delete:
+      summary: Remove a retention policy
+      description: The collection falls back to the org default (or, for `*`, nothing is removed any more).
+      tags: [retention]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: Removed, content: { application/json: { schema: { type: object, properties: { collection: { type: string }, deleted: { type: boolean } } } } } }
+        "404": { description: No policy for that collection }
+  /api/v1/retention/{collection}/_preview:
+    post:
+      summary: Preview what a policy would remove
+      description: |
+        Counts the versions, documents and bytes the saved policy (or the one in the body) would remove,
+        without changing anything. For `*`, covers every collection that has no policy of its own.
+      tags: [retention]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: collection, in: path, required: true, schema: { type: string } }
+      requestBody:
+        content: { application/json: { schema: { $ref: "#/components/schemas/RetentionRules" } } }
+      responses:
+        "200": { description: What would be removed, content: { application/json: { schema: { $ref: "#/components/schemas/RetentionResult" } } } }
+  /api/v1/retention/_apply:
+    post:
+      summary: Apply the org's retention policies now
+      description: Policies also run hourly. Each run that removes something is logged (see GET /api/v1/retention).
+      tags: [retention]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      responses:
+        "200": { description: What was removed, content: { application/json: { schema: { $ref: "#/components/schemas/RetentionResult" } } } }
+        "403": { description: Not an org owner or admin }
 components:
   securitySchemes:
     cookieAuth:
@@ -3239,6 +3310,26 @@ components:
         type: integer
 
   schemas:
+    RetentionRules:
+      type: object
+      properties:
+        labeledOnly: { type: boolean, description: Keep only labeled versions }
+        maxVersions: { type: integer, minimum: 1, nullable: true, description: Keep the newest n versions (the current one counts) }
+        maxAgeDays: { type: integer, minimum: 1, nullable: true, description: Remove versions older than n days }
+        afterLabel: { type: string, nullable: true, description: Remove versions older than the version this label points to }
+    RetentionPolicy:
+      allOf:
+        - $ref: "#/components/schemas/RetentionRules"
+        - type: object
+          properties:
+            collection: { type: string, description: "* for the org default" }
+            updatedAt: { type: string, format: date-time }
+            updatedBy: { type: string }
+    RetentionResult:
+      type: object
+      properties:
+        collections: { type: array, items: { type: object, properties: { collection: { type: string }, versions: { type: integer }, documents: { type: integer }, bytes: { type: integer } } } }
+        total: { type: object, properties: { versions: { type: integer }, documents: { type: integer }, bytes: { type: integer } } }
     ValidateSchemaReport:
       type: object
       description: |
