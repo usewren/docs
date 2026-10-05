@@ -915,6 +915,7 @@ paths:
     put:
       summary: Set the JSON Schema, display name rule, list columns and/or collection type
       description: |
+        Setting naturalKey registers existing documents' keys (keysRegistered; 409 if two share a value). Use PATCH to change only some fields.
         Accepts a wrapper object with optional `schema`, `displayName`, `listColumns` and `collectionType` fields,
         or a raw JSON Schema object (backward-compatible plain form).
         Set `collectionType` to `"binary"` to mark a collection as a binary asset store —
