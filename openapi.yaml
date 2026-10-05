@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: WREN
-  version: 0.5.0
+  version: 0.9.0
   description: |
     WREN is a self-hosted versioned JSON storage service.
     Every mutation creates a version. Versions can be labeled (e.g. `published`, `draft`).
@@ -388,6 +388,10 @@ paths:
         For JSON collections send `Content-Type: application/json`.
         For binary collections (`collectionType=binary`) send `Content-Type: multipart/form-data`
         with a single `file` field containing the new binary file.
+
+        A write that changes nothing (the same JSON, compared by meaning; or the same bytes,
+        name and type) creates no version: the response is `200` with the current version and
+        `unchanged: true`. Add `?force=true` to write a version anyway.
       tags: [documents, assets]
       security:
         - cookieAuth: []
@@ -498,6 +502,11 @@ paths:
         where the URL and the content disagree. If the body omits the key field, the server
         fills it in automatically from the URL so the stored doc stays in sync with its
         addressable identity.
+
+        Unchanged data creates no version (`200` with `unchanged: true`; `?force=true` writes one
+        anyway). For file collections with `naturalKey: "filename"`, send `multipart/form-data`
+        with a `file` field to create or replace the file named `{keyValue}`; its type follows
+        that name.
 
         Returns `201` on insert, `200` on update. The response body contains the document's
         stable UUID `id` (which clients may or may not care about), the current version, and
@@ -795,15 +804,20 @@ paths:
         - name: v1
           in: query
           required: true
-          description: Version number
+          description: A version number, or a label name (resolved to the version it points at)
           schema:
-            type: integer
+            type: string
         - name: v2
           in: query
           required: true
-          description: Version number
+          description: A version number, or a label name
           schema:
-            type: integer
+            type: string
+        - name: deep
+          in: query
+          description: "true: walk nested objects and arrays, one entry per changed leaf (JSON-Pointer paths). Default: top-level fields only."
+          schema:
+            type: boolean
       responses:
         "200":
           description: Diff result
@@ -3274,6 +3288,77 @@ paths:
       responses:
         "200": { description: What was removed, content: { application/json: { schema: { $ref: "#/components/schemas/RetentionResult" } } } }
         "403": { description: Not an org owner or admin }
+  /api/v1/{collection}/{id}/labels/{label}:
+    delete:
+      summary: Remove a label from a document
+      tags: [labels]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+        - { name: label, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Removed, content: { application/json: { schema: { type: object, properties: { id: { type: string }, label: { type: string }, removed: { type: boolean }, version: { type: integer } } } } } }
+        "404": { description: No such label on this document }
+  /api/v1/{collection}/{id}/undelete:
+    post:
+      summary: Undelete a document
+      description: Brings a deleted document back with its full history (and emits document.undeleted).
+      tags: [documents]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - $ref: "#/components/parameters/id"
+      responses:
+        "200": { description: Undeleted, content: { application/json: { schema: { type: object, properties: { id: { type: string }, undeleted: { type: boolean }, version: { type: integer } } } } } }
+        "404": { description: No deleted document with that id in this collection }
+        "409": { description: Another document now has this document's natural key }
+  /api/v1/{collection}/_restore:
+    post:
+      summary: Restore a collection to a label
+      description: |
+        In one transaction: every document that carries the label gets a new version with the labeled
+        content (unless it already matches), deleted ones come back, and with deleteUnlabeled documents
+        without the label (made since) are deleted. Typical use: reset test fixtures, undo a bad import.
+      tags: [labels]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RestoreRequest" } } }
+      responses:
+        "200": { description: What changed, content: { application/json: { schema: { $ref: "#/components/schemas/RestoreResult" } } } }
+        "400": { description: label is required }
+        "404": { description: No document has that label }
+        "409": { description: Restoring would duplicate a natural key; nothing was changed }
+  /api/v1/tree/{treeName}/_restore:
+    post:
+      summary: Restore a tree to a label
+      description: Like the collection restore, for every document mounted in the tree. Needs write access to every collection in it.
+      tags: [labels]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - { name: treeName, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/RestoreRequest" } } }
+      responses:
+        "200": { description: What changed (with the tree name), content: { application/json: { schema: { $ref: "#/components/schemas/RestoreResult" } } } }
+        "403": { description: No write access to some collection in the tree }
+        "404": { description: No document has that label }
+  /api/v1/{collection}/by-key/{keyValue}/raw:
+    get:
+      summary: Download a file by its name
+      description: For file collections whose schema has naturalKey "filename". Same headers and ?version=/?label= as GET /{collection}/{id}/raw.
+      tags: [assets]
+      security: [{ cookieAuth: [] }, { bearerAuth: [] }]
+      parameters:
+        - $ref: "#/components/parameters/collection"
+        - { name: keyValue, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: The file, content: { application/octet-stream: { schema: { type: string, format: binary } } } }
+        "404": { description: No file with that name }
 components:
   securitySchemes:
     cookieAuth:
@@ -3310,6 +3395,21 @@ components:
         type: integer
 
   schemas:
+    RestoreRequest:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+        deleteUnlabeled: { type: boolean, description: Delete documents that don't carry the label (made since it was set) }
+    RestoreResult:
+      type: object
+      properties:
+        label: { type: string }
+        restored: { type: integer, description: Documents that got a new version with the labeled content }
+        undeleted: { type: integer }
+        deleted: { type: integer }
+        unchanged: { type: integer }
+        collections: { type: array, items: { type: string } }
     RetentionRules:
       type: object
       properties:
